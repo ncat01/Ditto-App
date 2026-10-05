@@ -37,7 +37,12 @@ class RemoteDittoRepository(private val context: Context, private val session: S
     suspend fun refresh() = mutex.withLock {
         // Publish a complete snapshot only after every request succeeds.
         val nextCases=JSONArray(api.request("api/cases")).objects().map(::caseFrom)
-        val nextContent=JSONArray(api.request("api/content")).objects().map(::contentFrom)
+        val mediaScope=java.security.MessageDigest.getInstance("SHA-256").digest((session.endpoint+session.userId).toByteArray()).joinToString("") { "%02x".format(it) }
+        val nextContent=JSONArray(api.request("api/content")).objects().map(::contentFrom).map { item ->
+            val name=java.security.MessageDigest.getInstance("SHA-256").digest(item.id.toByteArray()).joinToString("") { "%02x".format(it) }
+            val file=java.io.File(context.cacheDir,"server-media/$mediaScope/$name.${if(item.kind==ContentKind.VIDEO) "mp4" else "image"}")
+            runCatching { item.copy(localUri=Uri.fromFile(api.download("api/content/${item.id}/media",file)).toString()) }.getOrDefault(item)
+        }
         val nextActivity=JSONArray(api.request("api/activity")).objects().map { ActivityEvent(it.getLong("id"),it.time("timestamp"),AgentKind.from(it.getString("agent")),it.getString("title"),it.getString("detail"),it.nullString("caseId")) }
         val s=JSONObject(api.request("api/dashboard/stats"))
         val nextStats=DashboardStats(s.getInt("contentMonitored"),s.getInt("openCases"),s.getInt("awaitingResponse"),s.getInt("resolved"),s.getInt("escalated"),s.getInt("pendingApproval"),s.getInt("totalCases"),s.getInt("verifiedReposts"),s.getInt("falsePositives"),s.getDouble("averageConfidence"),s.getDouble("resolutionRate"))

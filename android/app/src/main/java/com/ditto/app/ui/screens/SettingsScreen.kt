@@ -88,12 +88,12 @@ fun SettingsScreen(
                     Spacer(Modifier.width(14.dp))
                     Column(Modifier.weight(1f)) {
                         Text(
-                            settings.creatorName,
+                            if(connected) "Server creator account" else settings.creatorName,
                             style = MaterialTheme.typography.titleMedium,
                             color = DittoColors.TextPrimary
                         )
                         Text(
-                            settings.creatorHandle,
+                            if(connected) "Connected test • separate from offline accounts" else settings.creatorHandle,
                             style = MaterialTheme.typography.bodySmall,
                             color = DittoColors.TextSecondary
                         )

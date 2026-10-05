@@ -55,6 +55,7 @@ fun HomeScreen(
     val activity by vm.activity.collectAsStateWithLifecycle()
     val settings by vm.settings.collectAsStateWithLifecycle()
     val cases by vm.cases.collectAsStateWithLifecycle()
+    val connected=com.ditto.app.core.BackendConnection(androidx.compose.ui.platform.LocalContext.current).enabled()
     val attention = remember(cases) { DittoViewModel.needingAttention(cases).take(3) }
 
     LazyColumn(
@@ -80,7 +81,8 @@ fun HomeScreen(
 
         item {
             DemoModeBanner(
-                if (settings.demoMode)
+                if(connected) "Connected sandbox — server data, synthetic discovery and no live outreach."
+                else if (settings.demoMode)
                     "Demo Mode — synthetic discovery corpus. No live platform actions are sent."
                 else
                     "Live providers are not configured. Scans continue to use the demo corpus."

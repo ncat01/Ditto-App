@@ -1,8 +1,8 @@
 # Ditto - An Agentic AI Content Credit System
 
-Version **1.4.0-integrations-test** adds a connected Android sandbox to the existing Kotlin Compose app and FastAPI backend, with a pink sunrise/sunset interface, bundled fonts and a new quotation-shaped logo.
+Version **1.5.0-guided-test** adds a connected Android sandbox to the existing Kotlin Compose app and FastAPI backend, with a pink sunrise/sunset interface, bundled fonts and a new quotation-shaped logo.
 
-Install `apk/DITTO-integrations-test-debug.apk` (Android 8+; debug signed). Choose **Connected test** at sign-in and enter your backend HTTPS URL, or use **Offline demo** for device-local accounts. Connected mode supports server accounts, SQLite storage, private video uploads/playback, scans, approvals and follow-ups. Accounts in the two modes are separate.
+Install `apk/DITTO-guided-test-debug.apk` (Android 8+; debug signed). Choose **Connected test** at sign-in and enter your backend HTTPS URL, or use **Offline demo** for device-local accounts. Connected mode supports server accounts, SQLite storage, private video uploads/playback, scans, approvals and follow-ups. Accounts in the two modes are separate.
 
 Start with [Codespaces setup](docs/CODESPACES.md). The repository includes automatic backend setup in `.devcontainer/`. SQLite requires no database API key. Codespaces is a development environment with idle shutdown and usage quotas; this delivery is a connected test rather than an always-on production deployment.
 
@@ -17,3 +17,5 @@ Version 1.4.0 adds account-bound Instagram video import and Gemini draft preview
 - [Historical offline handoff](HANDOFF.md): earlier walkthrough and build details.
 
 Validation: 86 backend tests and 38 Android unit tests passed. Emulator checks covered connected login, uploads, scans, approvals and account isolation.
+
+Version 1.5.0 adds a five-step illustrated guide immediately after an account first signs in, including sign-up. Completion is stored per account and backend; Profile ? How to use Ditto reopens it. It covers account connection limits, importing originals, evidence review, Gemini draft review and sandbox approval.

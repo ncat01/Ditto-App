@@ -1,3 +1,11 @@
+# Current delivery: guided test 1.5.0
+
+Install `apk/DITTO-guided-test-debug.apk`. Five illustrated tutorial steps appear after first sign-in/sign-up for each account. Replay from Profile ? How to use Ditto. Steps adapt to offline/connected mode and accurately describe the current Instagram test-account binding requirement. Completion does not perform or imply an Instagram authorization.
+
+Earlier deliveries below are historical.
+
+---
+
 # Current delivery: integrations test 1.4.0
 
 Install `apk/DITTO-integrations-test-debug.apk`. Connected mode includes Instagram video import for the operator-bound Creator account and editable Gemini draft previews. Follow [integration setup](docs/INSTAGRAM.md). Validation: 86 backend tests and 38 Android unit tests passed; emulator integration checks used generated provider fixtures. Live end-to-end verification requires updating Codespaces and binding the Creator account.

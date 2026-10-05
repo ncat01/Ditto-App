@@ -74,6 +74,9 @@ fun AccountGate() {
         }
     } else {
         key(user) {
+            val tutorialAccount=user!!
+            val tutorialEndpoint=if(connected) connection.endpoint() else "offline"
+            var showTutorial by remember { mutableStateOf(!TutorialProgress.completed(context,tutorialAccount,tutorialEndpoint)) }
             var ready by remember { mutableStateOf(false) }
             val owner=remember(user) { object : androidx.lifecycle.ViewModelStoreOwner, androidx.lifecycle.HasDefaultViewModelProviderFactory {
                 override val viewModelStore=androidx.lifecycle.ViewModelStore()
@@ -93,7 +96,10 @@ fun AccountGate() {
                 }
                 ready=true
             }
-            Column(Modifier.fillMaxSize()) {
+            if(showTutorial) CreatorTutorial(connected) {
+                TutorialProgress.finish(context,tutorialAccount,tutorialEndpoint)
+                showTutorial=false
+            } else Column(Modifier.fillMaxSize()) {
                 Row(Modifier.fillMaxWidth().statusBarsPadding().padding(horizontal=16.dp),horizontalArrangement=Arrangement.SpaceBetween) {
                     Text(if(connected) "CONNECTED TEST" else "OFFLINE DEMO",color=DittoColors.PrimaryBlue,modifier=Modifier.padding(top=14.dp),style=MaterialTheme.typography.labelSmall)
                     if(connected) TextButton(onClick={ scope.launch { withContext(Dispatchers.IO) { runCatching { (ServiceLocator.repository(context) as com.ditto.app.data.repository.RemoteDittoRepository).refresh() }.onFailure { clockMessage="Backend unavailable. Resume your Codespace." } } } }) { Text("Refresh") }

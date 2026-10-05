@@ -22,6 +22,7 @@ import androidx.compose.material3.SwitchDefaults
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.setValue
 import kotlinx.coroutines.launch
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -51,6 +52,12 @@ fun SettingsScreen(
     val context=androidx.compose.ui.platform.LocalContext.current
     val scope=androidx.compose.runtime.rememberCoroutineScope()
 
+    var showGuide by androidx.compose.runtime.remember { androidx.compose.runtime.mutableStateOf(false) }
+    if(showGuide) {
+        androidx.compose.ui.window.Dialog(onDismissRequest={showGuide=false},properties=androidx.compose.ui.window.DialogProperties(usePlatformDefaultWidth=false)) {
+            CreatorTutorial(connected,onFinish={showGuide=false})
+        }
+    }
     LazyColumn(
         modifier = Modifier
             .fillMaxSize()
@@ -68,6 +75,9 @@ fun SettingsScreen(
             )
         }
 
+        item {
+            SecondaryButton(text="How to use Ditto",onClick={showGuide=true},modifier=Modifier.fillMaxWidth())
+        }
         // ---- profile ----
         item {
             DittoCard {

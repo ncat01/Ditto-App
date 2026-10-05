@@ -30,7 +30,7 @@ fun CreatorTutorial(connected: Boolean, onFinish: () -> Unit) {
     var step by rememberSaveable { mutableIntStateOf(0) }
     val titles=listOf("Welcome to your creator space", "Bring in your original", "Scan, then check the evidence", "Shape your message", "You choose what happens")
     val bodies=listOf(
-        if(connected) "Instagram import works with a Business or Creator account linked to your Ditto login. This test version needs the app owner to link it first. A private personal account can still use manual uploads."
+        if(connected) "Instagram import works with a Business or Creator account linked to your Ditto login. Tap Continue with Instagram below, sign in securely in your browser, then return here. Device uploads are also available."
         else "You are using the offline demo. Originals stay on this device. Instagram import and Gemini drafting are available in Connected test; manual uploads work here.",
         if(connected) "Open Originals, tap Load Instagram posts, then Import video. If Instagram is not linked, choose an image or video from your device instead. Imported videos appear in your library."
         else "Open Originals, add a title, then choose an image or video from your device. Select your upload or a sample original from the library.",
@@ -50,7 +50,8 @@ fun CreatorTutorial(connected: Boolean, onFinish: () -> Unit) {
         Column(Modifier.weight(1f).verticalScroll(rememberScrollState()),verticalArrangement=Arrangement.spacedBy(16.dp)) {
             Spacer(Modifier.height(6.dp))
             Text("Step ${step+1} of 5",style=MaterialTheme.typography.labelMedium,color=DittoColors.TextSecondary)
-            Image(painterResource(pictures[step]),contentDescription=descriptions[step],modifier=Modifier.fillMaxWidth().height(230.dp).clip(RoundedCornerShape(28.dp)).background(DittoColors.BackgroundAlt))
+            if (step == 0 && connected) InstagramConnectionCard()
+            else Image(painterResource(pictures[step]),contentDescription=descriptions[step],modifier=Modifier.fillMaxWidth().height(230.dp).clip(RoundedCornerShape(28.dp)).background(DittoColors.BackgroundAlt))
             Text(titles[step],style=MaterialTheme.typography.headlineMedium,color=DittoColors.TextPrimary)
             Text(bodies[step],style=MaterialTheme.typography.bodyLarge,color=DittoColors.TextPrimary)
             Text("Illustrated guide · ${if(connected) "Connected test" else "Offline demo"}",style=MaterialTheme.typography.bodySmall,color=DittoColors.TextSecondary)

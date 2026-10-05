@@ -113,6 +113,7 @@ fun ScanScreen(onOpenCase: (String) -> Unit) {
 
         item { DemoModeBanner(scanVm.discoveryName) }
         if(com.ditto.app.core.BackendConnection(context).enabled()) {
+            item { InstagramConnectionCard() }
             item { InstagramImportCard(onImported = { scanVm.clear() }) }
         }
 

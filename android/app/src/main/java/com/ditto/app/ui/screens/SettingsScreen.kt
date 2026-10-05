@@ -78,6 +78,7 @@ fun SettingsScreen(
         item {
             SecondaryButton(text="How to use Ditto",onClick={showGuide=true},modifier=Modifier.fillMaxWidth())
         }
+        if (connected) item { InstagramConnectionCard() }
         // ---- profile ----
         item {
             DittoCard {

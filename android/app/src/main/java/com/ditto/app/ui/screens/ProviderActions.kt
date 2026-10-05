@@ -15,12 +15,105 @@ import com.ditto.app.ui.components.DittoCard
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.CancellationException
+import android.content.Intent
+import android.net.Uri
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.LifecycleEventObserver
+import androidx.lifecycle.compose.LocalLifecycleOwner
 import org.json.JSONArray
 import org.json.JSONObject
 
 private fun connectedApi(context: android.content.Context): BackendApi {
-    val session=BackendConnection(context).session() ?: error("Sign into Connected test first.")
+    val session=BackendConnection(context).session() ?: error("Sign into your Ditto cloud account first.")
     return BackendApi(session.endpoint,session.token)
+}
+
+@Composable
+fun InstagramConnectionCard() {
+    val context = LocalContext.current
+    val scope = rememberCoroutineScope()
+    val lifecycleOwner = LocalLifecycleOwner.current
+    var busy by remember { mutableStateOf(false) }
+    var status by remember { mutableStateOf<JSONObject?>(null) }
+    var message by remember { mutableStateOf<String?>(null) }
+    var confirmDisconnect by remember { mutableStateOf(false) }
+    fun refresh() {
+        if (busy) return
+        busy = true
+        scope.launch {
+            try {
+                status = withContext(Dispatchers.IO) {
+                    JSONObject(connectedApi(context).request("api/integrations/instagram/status"))
+                }
+                message = null
+            } catch (e: CancellationException) { throw e }
+            catch (e: Exception) { message = e.message ?: "Connection status unavailable. Try again." }
+            finally { busy = false }
+        }
+    }
+    DisposableEffect(lifecycleOwner) {
+        val observer = LifecycleEventObserver { _, event ->
+            if (event == Lifecycle.Event.ON_RESUME) refresh()
+        }
+        lifecycleOwner.lifecycle.addObserver(observer)
+        onDispose { lifecycleOwner.lifecycle.removeObserver(observer) }
+    }
+    LaunchedEffect(Unit) { refresh() }
+    val connected = status?.optBoolean("connected") == true
+    DittoCard {
+        Text("Connect Instagram", style = MaterialTheme.typography.titleMedium)
+        Text(if (connected) "Connected as @${status?.optString("username")}" else
+            "Link your Creator or Business account through Instagram to import your own videos. You can also upload originals from your device.",
+            style = MaterialTheme.typography.bodySmall)
+        Spacer(Modifier.height(8.dp))
+        if (!connected) {
+            SecondaryButton(text = if (busy) "Checking connection?" else "Continue with Instagram",
+                enabled = !busy && status?.optBoolean("configured") == true,
+                modifier = Modifier.fillMaxWidth(), onClick = {
+                    busy = true; message = null
+                    scope.launch {
+                        try {
+                            val api = connectedApi(context)
+                            val result = withContext(Dispatchers.IO) {
+                                JSONObject(api.request("api/integrations/instagram/connect", "{}"))
+                            }
+                            val uri = Uri.parse(result.getString("authorizationUrl"))
+                            val origin = Uri.parse(api.endpoint)
+                            require(uri.scheme == "https" && uri.host == origin.host && uri.port == origin.port &&
+                                uri.userInfo == null && uri.path == "/api/integrations/instagram/begin") {
+                                "Instagram sign-in address is invalid. Contact support."
+                            }
+                            context.startActivity(Intent(Intent.ACTION_VIEW, uri))
+                            message = "Finish signing in in your browser, then return to Ditto."
+                        } catch (e: CancellationException) { throw e }
+                        catch (e: Exception) { message = e.message ?: "Could not open Instagram sign-in." }
+                        finally { busy = false }
+                    }
+                })
+            if (status?.optBoolean("configured") == false)
+                Text("Instagram connection is currently unavailable. Device uploads still work.", style = MaterialTheme.typography.bodySmall)
+        }
+        SecondaryButton(text = "Refresh connection", enabled = !busy,
+            onClick = { refresh() }, modifier = Modifier.fillMaxWidth())
+        if (connected) TextButton(enabled = !busy, onClick = { confirmDisconnect = true }) { Text("Disconnect Instagram") }
+        message?.let { Text(it, style = MaterialTheme.typography.bodySmall) }
+    }
+    if (confirmDisconnect) AlertDialog(onDismissRequest = { confirmDisconnect = false },
+        title = { Text("Disconnect Instagram?") },
+        text = { Text("Ditto will remove its stored Instagram connection. Imported originals remain in your library. You can also remove Ditto from Instagram?s Apps and websites settings.") },
+        dismissButton = { TextButton(onClick = { confirmDisconnect = false }) { Text("Cancel") } },
+        confirmButton = { TextButton(onClick = {
+            confirmDisconnect = false; busy = true
+            scope.launch {
+                try {
+                    withContext(Dispatchers.IO) { connectedApi(context).request("api/integrations/instagram/disconnect", "{}") }
+                    status = null; message = "Instagram disconnected."
+                } catch (e: CancellationException) { throw e }
+                catch (e: Exception) { message = e.message ?: "Could not disconnect. Try again." }
+                finally { busy = false; refresh() }
+            }
+        }) { Text("Disconnect") } })
 }
 
 @Composable

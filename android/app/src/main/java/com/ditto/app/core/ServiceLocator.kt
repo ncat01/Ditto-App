@@ -21,7 +21,7 @@ object ServiceLocator {
     @Volatile var activeUser: String? = null
         private set
     fun activateUser(id: String?) {
-        if (activeUser != id) { (repo as? RemoteDittoRepository)?.close(); activeUser = id; repo = null; settingsStore = null }
+        if (activeUser != id) { (repo as? RemoteDittoRepository)?.close();DemoClock.clearDisplay(); activeUser = id; repo = null; settingsStore = null }
     }
     @Volatile private var repo: DittoRepository? = null
     @Volatile private var settingsStore: SettingsStore? = null

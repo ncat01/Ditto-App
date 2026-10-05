@@ -1,30 +1,17 @@
-# Ditto — An Agentic AI Content Credit System
+# Ditto ? An Agentic AI Content Credit System
 
-The existing native Android app and FastAPI service have been extended with a warm creator interface, device-local and server authentication, isolated account storage, real five-frame video hashing, generated video evidence, persistent scan jobs, human-approved sandbox actions, and durable follow-ups.
+Version **1.3.0-connected-test** adds a connected Android sandbox to the existing Kotlin Compose app and FastAPI backend, with a pink sunrise/sunset interface, bundled fonts and a new quotation-shaped logo.
 
-**Start here: [HANDOFF.md](HANDOFF.md)** for installation, demo access, walkthrough, backend migrations and seeds, dataset generation, evaluation, build commands, and deployment limits.
+Install `apk/DITTO-connected-test-debug.apk` (Android 8+; debug signed). Choose **Connected test** at sign-in and enter your backend HTTPS URL, or use **Offline demo** for device-local accounts. Connected mode supports server accounts, SQLite storage, private video uploads/playback, scans, approvals and follow-ups. Accounts in the two modes are separate.
 
-- Updated APK: `apk/DITTO-offline-demo-debug.apk` — debug-signed Android 8+ offline demo, version `1.1.0-demo-debug`.
-- Android source: `android/` (Kotlin, Compose, Room, DataStore, WorkManager).
-- Backend source: `backend/` (FastAPI, SQLAlchemy, Alembic, opaque expiring sessions).
-- Dataset: `demo_data/manifest.json`; measured held-out results: `demo_data/evaluation.json`.
-- Emulator captures and verification evidence: `output/`.
+Start with [Codespaces setup](docs/CODESPACES.md). The repository includes automatic backend setup in `.devcontainer/`. SQLite requires no database API key. Codespaces is a development environment with idle shutdown and usage quotas; this delivery is a connected test rather than an always-on production deployment.
 
-Live Instagram discovery, external messages/reports, LLM calls, face embeddings, ASR and validated manipulation detection are unavailable. All outreach is sandboxed; simulated scenarios and uncalibrated rule scores are labelled. The Android client runs locally and does not synchronize with the separately authenticated backend. No iOS build was produced.
+Discovery uses generated demo assets and outreach is sandboxed. Live Meta discovery/messaging, LLM providers, face embeddings and ASR are not connected. No provider credentials, account databases or private uploads are included in source.
 
-The earlier README is preserved in `docs/LEGACY_README.md` as historical documentation; its implementation and integration claims are superseded by this handoff.
-# Connected Codespaces test — version 1.3.0
+- `android/`: Kotlin, Compose, Room and encrypted server sessions.
+- `backend/`: FastAPI, SQLAlchemy, Alembic and account-scoped authenticated APIs.
+- `demo_data/`: generated video manifest and matcher evaluation.
+- [Next production steps](docs/PRODUCTION-NEXT.md).
+- [Historical offline handoff](HANDOFF.md): earlier walkthrough and build details.
 
-Codespaces configuration is included in `.devcontainer/devcontainer.json`.
-Start the backend with `.venv/bin/python backend/scripts/codespaces.py start`.
-The Android client now supports **Connected test** at sign-in with a runtime
-backend URL, server accounts, account-isolated API data, real uploads, server
-scans and approvals, private server video playback, and visible connection errors.
-The pink sunrise/sunset design and offline device accounts are preserved.
-
-Read [Codespaces launch and phone setup](docs/CODESPACES.md). SQLite needs no API
-key. This is a connected sandbox test: discovery is synthetic, outreach is
-recorded locally on the server, and live providers are still unavailable.
-Codespaces is a metered development environment with idle shutdown, not continuous
-production hosting. No provider credentials or private account data are committed.
-
+Validation: 64 backend tests and 38 Android unit tests passed. Emulator checks covered connected login, uploads, scans, approvals and account isolation.

@@ -9,6 +9,7 @@ import java.util.concurrent.TimeUnit
 object DemoClock {
     @Volatile private var displayOffset: Long = 0
     fun displayNow(): Long = System.currentTimeMillis()+displayOffset
+    fun clearDisplay() { displayOffset=0 }
     fun now(context: Context,user: String): Long {
         val offset=context.getSharedPreferences("clock_$user",0).getLong("offset",0)
         if(ServiceLocator.activeUser==user)displayOffset=offset

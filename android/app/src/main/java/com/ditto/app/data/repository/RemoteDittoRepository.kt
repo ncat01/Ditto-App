@@ -64,7 +64,7 @@ class RemoteDittoRepository(private val context: Context, private val session: S
         val body=MultipartBody.Builder().setType(MultipartBody.FORM).addFormDataPart("file",if(isVideo) "original.mp4" else "original.image",bytes.toRequestBody(mime.toMediaType())).build()
         val q=java.net.URLEncoder.encode(title,"UTF-8")+"&source="+java.net.URLEncoder.encode(source,"UTF-8")
         val item=contentFrom(JSONObject(api.request("api/content/upload?title=$q",body=body)))
-        refresh();item
+        refresh();content.value.firstOrNull { it.id==item.id } ?: item
     }
     override fun scan(contentId:String): Flow<DittoResult<ScanProgress>> = flow {
         emit(DittoResult.Ok(ScanProgress(ScanStage.INGESTING,"Submitting your original to the backend.")))

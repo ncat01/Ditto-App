@@ -1,3 +1,11 @@
+# Current delivery: connected test 1.3.0
+
+Install `apk/DITTO-connected-test-debug.apk`. This debug-signed Android build supports both offline device accounts and connected server accounts. Follow [Codespaces setup](docs/CODESPACES.md) to launch the backend and configure its URL. Server accounts, private uploads, SQLite storage, scans and sandbox approvals are implemented. Live provider integrations remain unavailable; Codespaces is not continuous production hosting.
+
+The following handoff describes the earlier offline delivery. Its APK version and statements about lack of Android/backend connectivity are historical; the setup above supersedes them.
+
+---
+
 # Ditto Android handoff
 
 The supplied Kotlin/Compose app and FastAPI backend were extended in place. The delivered Android APK is a **debug-signed, self-contained offline demo**, not a production release. It needs no build-machine backend, internet connection, Instagram account, API credentials, or physical phone. The supplied older `DITTO-release.apk` is a legacy artifact and is not the updated delivery.

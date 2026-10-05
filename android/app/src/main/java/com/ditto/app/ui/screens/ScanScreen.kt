@@ -154,11 +154,15 @@ fun ScanScreen(onOpenCase: (String) -> Unit) {
 
         state.selectedContent?.let { selected ->
             item {
-                val db=com.ditto.app.data.local.DittoDatabase.get(context,com.ditto.app.core.ServiceLocator.activeUser!!)
-                val jobs by androidx.compose.runtime.remember(selected.id) { db.scanJobDao().observe(selected.id) }.collectAsStateWithLifecycle(initialValue=emptyList())
                 Text("Scan history",style=MaterialTheme.typography.titleMedium)
-                jobs.take(5).forEach { job -> Text("${relativeTime(job.startedAt)} • ${job.stage} • ${job.candidates} candidates${job.error?.let { " • $it" } ?: ""}",style=MaterialTheme.typography.bodySmall) }
-                if(jobs.isEmpty()) Text("No scan has run for this original yet.",style=MaterialTheme.typography.bodySmall)
+                if(com.ditto.app.core.BackendConnection(context).enabled()) {
+                    ServerScanHistory(selected.id,state.isScanning)
+                } else {
+                    val db=com.ditto.app.data.local.DittoDatabase.get(context,com.ditto.app.core.ServiceLocator.activeUser!!)
+                    val jobs by androidx.compose.runtime.remember(selected.id) { db.scanJobDao().observe(selected.id) }.collectAsStateWithLifecycle(initialValue=emptyList())
+                    jobs.take(5).forEach { job -> Text("${relativeTime(job.startedAt)} • ${job.stage} • ${job.candidates} candidates${job.error?.let { " • $it" } ?: ""}",style=MaterialTheme.typography.bodySmall) }
+                    if(jobs.isEmpty()) Text("No scan has run for this original yet.",style=MaterialTheme.typography.bodySmall)
+                }
                 selected.localUri?.let { uri -> if(selected.kind==com.ditto.app.domain.model.ContentKind.VIDEO || uri.endsWith(".mp4")) com.ditto.app.ui.components.VideoPreview(uri,"Preview your original") }
             }
         }
@@ -230,6 +234,22 @@ fun ScanScreen(onOpenCase: (String) -> Unit) {
             }
         }
     }
+}
+
+@Composable
+private fun ServerScanHistory(id: String, scanning: Boolean) {
+    val context=androidx.compose.ui.platform.LocalContext.current
+    val lines by androidx.compose.runtime.produceState<List<String>?>(null,id,scanning) {
+        value=kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
+            try {
+                val session=com.ditto.app.core.BackendConnection(context).session() ?: error("Sign in again.")
+                val rows=org.json.JSONArray(com.ditto.app.core.BackendApi(session.endpoint,session.token).request("api/content/$id/scans"))
+                if(rows.length()==0) listOf("No server scan has run for this original yet.")
+                else (0 until minOf(5,rows.length())).map { i-> val j=rows.getJSONObject(i);"${j.getString("stage")} • ${j.getInt("candidates")} candidates • ${j.getString("createdAt")}" }
+            } catch(e:kotlinx.coroutines.CancellationException) { throw e } catch(e:Exception) { listOf("Server scan history unavailable. Resume your Codespace.") }
+        }
+    }
+    (lines ?: listOf("Loading server scan history…")).forEach { Text(it,style=MaterialTheme.typography.bodySmall) }
 }
 
 @Composable

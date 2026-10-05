@@ -13,3 +13,5 @@
 **/*.jks
 **/*.keystore
 **/.idea/
+
+.kotlin/

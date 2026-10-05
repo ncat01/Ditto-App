@@ -19,7 +19,8 @@ class Settings(BaseSettings):
     demo_mode: bool = Field(default=True, validation_alias=AliasChoices("DITTO_DEMO_MODE", "demo_mode"))
     media_root: str = Field(default="./private_media", validation_alias=AliasChoices("DITTO_MEDIA_ROOT", "media_root"))
 
-    meta_access_token: str = ""
+    meta_access_token: SecretStr = SecretStr("")
+    meta_api_version: str = Field(default="v25.0", pattern=r"^v[0-9]+\.0$")
     google_cloud_api_key: str = ""
     meta_ad_library_token: str = ""
     llm_api_key: str = ""
@@ -44,7 +45,7 @@ class Settings(BaseSettings):
 
     @property
     def has_meta(self) -> bool:
-        return bool(self.meta_access_token) and not self.demo_mode
+        return bool(self.meta_access_token.get_secret_value())
 
     @property
     def outreach_is_live(self) -> bool:
@@ -54,9 +55,10 @@ class Settings(BaseSettings):
         """Human-readable status for /api/health, so callers know what is real."""
         return {
             "ai_drafting": (f"Gemini ({self.gemini_model}): key configured; connectivity not verified by health" if self.gemini_api_key.get_secret_value() else "Gemini: key not configured"),
+            "instagram": ("Instagram Login: token configured; run check_instagram.py to verify" if self.has_meta else "Instagram Login: token not configured"),
             "verification":"Demo Verification Agent (deterministic rules; no LLM called)",
             "discovery":"Demo discovery corpus (synthetic, no live scraping)",
-            "own_content":"Local upload only (Meta adapter unavailable in this build)",
+            "own_content":"Local uploads in app; Instagram profile/media read adapter available via server scripts, not yet linked to a Ditto account",
             "outreach":"Sandboxed — messages are recorded, never transmitted",
             "matching":"Measured five-frame pHash (local)",
             "manipulation":"Unavailable; simulated evidence only",

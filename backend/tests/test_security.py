@@ -51,14 +51,18 @@ def test_accounts_isolation_sessions_and_pipeline(monkeypatch):
         from types import SimpleNamespace
         from pathlib import Path
         owner=client.get('/api/auth/me',headers=a).json()['id']
-        monkeypatch.setattr(instagram_binding,'owner_binding',lambda uid: {'instagram_user_id':'123'} if uid==owner else None)
         class Reader:
             def media(self,*args): return [SimpleNamespace(id='456',caption='My real original',media_type='VIDEO',timestamp='2026-10-06T00:00:00+00:00')]
             def media_item(self,mid): return self.media()[0]
             def download_video(self,item):return (Path(__file__).resolve().parents[2]/'demo_data/videos/original_1.mp4').read_bytes()
-        monkeypatch.setattr(instagram,'InstagramReader',Reader)
-        assert client.get('/api/integrations/instagram/posts',headers=b).status_code==403
-        assert client.post('/api/integrations/instagram/import/456',headers=b).status_code==403
+        from app.services import instagram_oauth
+        from fastapi import HTTPException
+        def connected(db,uid):
+            if uid!=owner:raise HTTPException(409,'Connect your Instagram account first.')
+            return Reader(),'123'
+        monkeypatch.setattr(instagram_oauth,'connected_reader',connected)
+        assert client.get('/api/integrations/instagram/posts',headers=b).status_code==409
+        assert client.post('/api/integrations/instagram/import/456',headers=b).status_code==409
         assert client.get('/api/integrations/instagram/posts',headers=a).json()[0]['id']=='456'
         assert client.post('/api/integrations/instagram/import/999',headers=a).status_code==404
         imported=client.post('/api/integrations/instagram/import/456',headers=a)

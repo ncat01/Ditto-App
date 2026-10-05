@@ -12,3 +12,5 @@ pytest==8.3.4
 alembic==1.20.0
 psycopg[binary]==3.3.6
 opencv-python-headless==5.0.0.93
+
+cryptography==46.0.3

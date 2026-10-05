@@ -15,6 +15,8 @@ from app.database.db import SessionLocal, init_db
 from app.services.seed import seed
 
 logging.basicConfig(level=logging.INFO)
+logging.getLogger("httpx").setLevel(logging.WARNING)
+logging.getLogger("httpcore").setLevel(logging.WARNING)
 logger = logging.getLogger("ditto")
 
 settings = get_settings()
@@ -51,6 +53,8 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+from app.api.instagram_oauth import router as instagram_router
+app.include_router(instagram_router)
 app.include_router(auth_router)
 app.include_router(router)
 

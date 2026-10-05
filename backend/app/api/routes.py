@@ -378,14 +378,13 @@ def ai_draft(case_id: str, db: Session = Depends(get_db)):
 # ---------------------------------------------------------------- Instagram test account import
 @router.get('/integrations/instagram/posts')
 def instagram_posts(db: Session = Depends(get_db)):
-    from app.services.instagram_binding import owner_binding
-    from app.providers.instagram import InstagramReader,InstagramUnavailable
-    binding=owner_binding(db.info['user_id'])
-    if not binding:raise HTTPException(403,'Instagram is not linked to this Ditto account. Run the server binding setup first.')
+    from app.services.instagram_oauth import connected_reader
+    from app.providers.instagram import InstagramUnavailable
+    reader,instagram_user_id=connected_reader(db,db.info['user_id'])
     db.rollback()
     try:
         return [{'id':p.id,'caption':p.caption,'mediaType':p.media_type,'publishedAt':p.timestamp}
-            for p in InstagramReader().media(binding['instagram_user_id'],25)]
+            for p in reader.media(instagram_user_id,25)]
     except InstagramUnavailable as exc:raise HTTPException(503,str(exc)) from None
 
 from threading import Lock
@@ -398,18 +397,16 @@ def instagram_import(media_id: str,db: Session = Depends(get_db)):
         return _instagram_import(media_id,db)
 
 def _instagram_import(media_id: str,db: Session):
-    from app.services.instagram_binding import owner_binding
-    from app.providers.instagram import InstagramReader,InstagramUnavailable
-    binding=owner_binding(db.info['user_id'])
-    if not binding:raise HTTPException(403,'Instagram is not linked to this Ditto account. Run the server binding setup first.')
+    from app.services.instagram_oauth import connected_reader
+    from app.providers.instagram import InstagramUnavailable
+    reader,instagram_user_id=connected_reader(db,db.info['user_id'])
     marker='Instagram:'+media_id
     item=db.scalar(select(Content).where(Content.user_id==db.info['user_id'],Content.source_platform==marker))
     if item is None:
         db.rollback()
         try:
-            reader=InstagramReader()
             # Only media returned by the bound account's own-media edge can be imported.
-            posts=reader.media(binding['instagram_user_id'],25)
+            posts=reader.media(instagram_user_id,25)
             if media_id not in [p.id for p in posts]:raise HTTPException(404,'Post not found in the latest 25 posts of your linked account.')
             post=reader.media_item(media_id)
             from datetime import datetime

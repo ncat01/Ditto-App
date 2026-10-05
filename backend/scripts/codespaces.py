@@ -20,6 +20,7 @@ def environment():
     env = os.environ.copy()
     env.update(DITTO_DATABASE_URL='sqlite:///' + (DATA / 'ditto.db').as_posix(),
                DITTO_MEDIA_ROOT=str(DATA / 'media'), DITTO_DEMO_MODE='true')
+    if env.get('CODESPACE_NAME'):env.setdefault('PUBLIC_BASE_URL', 'https://' + env['CODESPACE_NAME'] + '-8010.app.github.dev')
     env['PYTHONPATH'] = str(BACKEND)
     return env
 
@@ -34,7 +35,7 @@ def run():
     DATA.mkdir(exist_ok=True)
     env = environment()
     subprocess.run([sys.executable, '-m', 'alembic', 'upgrade', 'head'], cwd=BACKEND, env=env, check=True)
-    commands = [[sys.executable, '-m', 'uvicorn', 'app.main:app', '--host', '0.0.0.0', '--port', '8010', '--workers', '1'],
+    commands = [[sys.executable, '-m', 'uvicorn', 'app.main:app', '--host', '0.0.0.0', '--port', '8010', '--workers', '1', '--no-access-log'],
                 [sys.executable, 'scripts/scheduler.py']]
     children = [subprocess.Popen(c, cwd=BACKEND, env=env) for c in commands]
     def stop(*_):

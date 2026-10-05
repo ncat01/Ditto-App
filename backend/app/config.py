@@ -20,6 +20,10 @@ class Settings(BaseSettings):
     media_root: str = Field(default="./private_media", validation_alias=AliasChoices("DITTO_MEDIA_ROOT", "media_root"))
 
     meta_access_token: SecretStr = SecretStr("")
+    instagram_app_id: str = Field(default="1107232135218848", pattern=r"^\d+$")
+    instagram_app_secret: SecretStr = SecretStr("")
+    public_base_url: str = ""
+    token_encryption_key: SecretStr = SecretStr("")
     meta_api_version: str = Field(default="v25.0", pattern=r"^v[0-9]+\.0$")
     google_cloud_api_key: str = ""
     meta_ad_library_token: str = ""

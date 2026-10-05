@@ -23,9 +23,9 @@ class MediaItem(BaseModel):
     media_url: str = ''
 
 class InstagramReader:
-    def __init__(self):
+    def __init__(self, token=None):
         settings = get_settings()
-        self._token = settings.meta_access_token.get_secret_value()
+        self._token = token if token is not None else settings.meta_access_token.get_secret_value()
         self._base = 'https://graph.instagram.com/' + settings.meta_api_version
 
     def _get(self, path, params):

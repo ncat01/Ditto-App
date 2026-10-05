@@ -43,3 +43,21 @@ def test_missing_secret_and_invalid_id(monkeypatch):
     with pytest.raises(instagram.InstagramUnavailable):reader.profile()
     with pytest.raises(instagram.InstagramUnavailable):reader.media('../me')
     assert 'private-test-token' not in repr(Settings(meta_access_token='private-test-token'))
+
+def test_download_rejects_non_meta_hosts_and_nonvideo(monkeypatch):
+    reader=configure(monkeypatch,body={})
+    for url in ('http://cdninstagram.com/a','https://127.0.0.1/a','https://evil.example/a','https://fakecdninstagram.com/a','https://s.cdninstagram.com:8080/a'):
+        item=instagram.MediaItem(id='1',media_type='VIDEO',media_url=url)
+        with pytest.raises(instagram.InstagramUnavailable):reader.download_video(item)
+    with pytest.raises(instagram.InstagramUnavailable):reader.download_video(instagram.MediaItem(id='1',media_type='IMAGE'))
+
+def test_binding_requires_user_and_current_token(monkeypatch,tmp_path):
+    import json
+    from app.services import instagram_binding as binding
+    monkeypatch.setattr(binding,'get_settings',lambda:Settings(meta_access_token='test-secret'))
+    path=tmp_path/'binding.json';monkeypatch.setattr(binding,'BINDING_FILE',path)
+    path.write_text(json.dumps({'ditto_user_id':'owner','instagram_user_id':'123','token_digest':binding.token_digest()}))
+    assert binding.owner_binding('owner')['instagram_user_id']=='123'
+    assert binding.owner_binding('other') is None
+    monkeypatch.setattr(binding,'get_settings',lambda:Settings(meta_access_token='changed-secret'))
+    assert binding.owner_binding('owner') is None

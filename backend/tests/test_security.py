@@ -46,6 +46,27 @@ def test_accounts_isolation_sessions_and_pipeline(monkeypatch):
         assert client.post('/api/cases/'+cid+'/approve',headers=a,json={}).status_code==200
         assert client.post('/api/cases/'+cid+'/ai-draft',headers=a).status_code==409
         assert client.post('/api/cases/'+cid+'/approve',headers=a,json={}).status_code==409
+        from app.services import instagram_binding
+        from app.providers import instagram
+        from types import SimpleNamespace
+        from pathlib import Path
+        owner=client.get('/api/auth/me',headers=a).json()['id']
+        monkeypatch.setattr(instagram_binding,'owner_binding',lambda uid: {'instagram_user_id':'123'} if uid==owner else None)
+        class Reader:
+            def media(self,*args): return [SimpleNamespace(id='456',caption='My real original',media_type='VIDEO',timestamp='2026-10-06T00:00:00+00:00')]
+            def media_item(self,mid): return self.media()[0]
+            def download_video(self,item):return (Path(__file__).resolve().parents[2]/'demo_data/videos/original_1.mp4').read_bytes()
+        monkeypatch.setattr(instagram,'InstagramReader',Reader)
+        assert client.get('/api/integrations/instagram/posts',headers=b).status_code==403
+        assert client.post('/api/integrations/instagram/import/456',headers=b).status_code==403
+        assert client.get('/api/integrations/instagram/posts',headers=a).json()[0]['id']=='456'
+        assert client.post('/api/integrations/instagram/import/999',headers=a).status_code==404
+        imported=client.post('/api/integrations/instagram/import/456',headers=a)
+        assert imported.status_code==200,imported.text
+        assert imported.json()['sourcePlatform']=='Instagram:456'
+        assert client.post('/api/integrations/instagram/import/456',headers=a).json()['id']==imported.json()['id']
+        assert client.get('/api/content/'+imported.json()['id']+'/media',headers=b).status_code==404
+        assert client.get('/api/content/'+imported.json()['id']+'/media',headers=a).status_code==200
         assert client.post('/api/auth/logout',headers=a).status_code==200
         assert client.get('/api/auth/me',headers=a).status_code==401
         login=client.post('/api/auth/login',json={'email':'alpha@example.test','password':'secure-demo-123'})

@@ -14,8 +14,8 @@ android {
         applicationId = "com.ditto.app"
         minSdk = 26
         targetSdk = 35
-        versionCode = 4
-        versionName = "1.3.0-connected-test"
+        versionCode = 5
+        versionName = "1.4.0-integrations-test"
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
 
         // Backend base URL is injected at build time, never hardcoded in source.

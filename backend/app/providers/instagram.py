@@ -20,6 +20,7 @@ class MediaItem(BaseModel):
     caption: str = ''
     permalink: str = ''
     timestamp: str = ''
+    media_url: str = ''
 
 class InstagramReader:
     def __init__(self):
@@ -69,3 +70,38 @@ class InstagramReader:
             return [MediaItem.model_validate(item) for item in data]
         except (KeyError, TypeError, ValidationError):
             raise InstagramUnavailable('Instagram returned no usable media list.') from None
+
+    def media_item(self, media_id):
+        if not str(media_id).isdigit():
+            raise InstagramUnavailable('Invalid Instagram media identifier.')
+        try:
+            return MediaItem.model_validate(self._get('/' + str(media_id), {
+                'fields': 'id,caption,media_type,media_url,permalink,timestamp'}))
+        except ValidationError:
+            raise InstagramUnavailable('Instagram returned no usable media record.') from None
+
+    def download_video(self, item):
+        from urllib.parse import urlsplit
+        url = urlsplit(item.media_url)
+        host = (url.hostname or '').lower()
+        allowed = any(host.endswith('.' + domain) for domain in ('cdninstagram.com', 'fbcdn.net'))
+        if item.media_type != 'VIDEO':
+            raise InstagramUnavailable('Choose a video or Reel. Image and carousel import is not available yet.')
+        if url.scheme != 'https' or not allowed or url.username or url.password or url.port not in (None,443):
+            raise InstagramUnavailable('Instagram media download address is unsupported.')
+        try:
+            # Never forward the API bearer token to a CDN; never follow redirects.
+            with httpx.Client(timeout=45, follow_redirects=False) as client:
+                with client.stream('GET',item.media_url) as response:
+                    if response.status_code != 200:
+                        raise InstagramUnavailable('Instagram video download unavailable. Refresh the post list.')
+                    data = bytearray()
+                    for chunk in response.iter_bytes():
+                        data.extend(chunk)
+                        if len(data) > 25*1024*1024:
+                            raise InstagramUnavailable('Instagram video exceeds the 25 MB import limit.')
+            if not data:
+                raise InstagramUnavailable('Instagram returned an empty video.')
+            return bytes(data)
+        except httpx.HTTPError:
+            raise InstagramUnavailable('Instagram video download could not be completed.') from None

@@ -14,7 +14,7 @@ only after a valid draft is returned. Health reports configuration, not verified
 The authenticated `POST /api/cases/{case_id}/ai-draft` endpoint returns an unsaved
 preview for pending cases. Title, recipient, action, tone and existing draft text are
 sent to Google; videos are not sent. Evidence, approvals and dispatch are unchanged.
-An Android AI draft button is not included in the current APK; use API docs for this endpoint.
+Android 1.4.0 includes Draft with Gemini on pending cases, with a data-sharing prompt, editable preview and explicit Save draft.
 
 Free-tier prompts may be used to improve Google's products. Test with generated sample
 content. Keep billing disabled for card-free use. Key/quota/model errors are explicit.

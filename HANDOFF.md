@@ -1,3 +1,11 @@
+# Current delivery: integrations test 1.4.0
+
+Install `apk/DITTO-integrations-test-debug.apk`. Connected mode includes Instagram video import for the operator-bound Creator account and editable Gemini draft previews. Follow [integration setup](docs/INSTAGRAM.md). Validation: 86 backend tests and 38 Android unit tests passed; emulator integration checks used generated provider fixtures. Live end-to-end verification requires updating Codespaces and binding the Creator account.
+
+Earlier handoffs below are historical.
+
+---
+
 # Current delivery: connected test 1.3.0
 
 Install `apk/DITTO-connected-test-debug.apk`. This debug-signed Android build supports both offline device accounts and connected server accounts. Follow [Codespaces setup](docs/CODESPACES.md) to launch the backend and configure its URL. Server accounts, private uploads, SQLite storage, scans and sandbox approvals are implemented. Live provider integrations remain unavailable; Codespaces is not continuous production hosting.

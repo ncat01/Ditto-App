@@ -1,27 +1,49 @@
-# Instagram Login connection check
+# Instagram import ? connected test 1.4.0
 
-Store the Instagram-generated token as the personal Codespaces secret
-`META_ACCESS_TOKEN`, granting access only to `ncat01/Ditto-App`.
-Stop and restart the Codespace to receive the new secret, then run:
+The operator stores the Instagram Login token as a Codespaces secret named
+`META_ACCESS_TOKEN`, granting access to `ncat01/Ditto-App`. Stop and restart
+Codespaces after changing secrets. Check access with:
 
 ```sh
-git pull --ff-only
 .venv/bin/python backend/scripts/check_instagram.py
 ```
 
-This reads the authorized Creator profile and up to five own-post metadata records.
-An empty list is normal for a new account. No credentials, username, media URL or
-post contents are printed or saved by the check. Token/key errors are explicit.
-`META_API_VERSION` defaults to `v25.0` and may be changed if necessary.
+## Bind your Creator account to a Ditto account
 
-The adapter does not publish, message, search arbitrary Instagram reposts or import
-videos into Ditto. It is currently available to backend scripts. Per-user OAuth,
-encrypted token storage and account binding are required before exposing the
-Instagram account to Android or shared API users. A deployment-wide token is not
-made accessible to every Ditto account. Webhooks and app publishing are not needed
-for this initial read-only tester check.
+Pull the latest source, then stop and restart Codespaces to load the new API code.
+Run this in the Codespaces Terminal to create a new Ditto login and bind Instagram:
 
-If Meta reports an expired token, regenerate it in the Instagram setup dashboard,
-update the secret, and restart Codespaces. Never share it in chat or screenshots.
+```sh
+.venv/bin/python backend/scripts/bind_instagram.py --create
+```
 
-Meta reference: https://developers.facebook.com/docs/instagram-platform/instagram-api-with-instagram-login/.
+Enter the email and password you want for Ditto. Password input is hidden. To use
+an existing Ditto server account, omit `--create`. This logs in via the local API,
+checks your Instagram profile and writes an operator-owned binding file under
+`.ditto-data/`. The temporary Ditto session is revoked. No credential is printed
+or written to the binding file. The Instagram token stays in Codespaces secrets.
+
+Sign into Android **Connected test** with the same Ditto email/password and your
+forwarded HTTPS URL. In **Originals**, choose **Load Instagram posts**, then
+**Import video**. Latest 25 posts are listed; only video/Reel imports up to 25 MB
+are supported. Re-importing the same post returns its existing library item.
+Private playback uses account-scoped server APIs. Publication time is retained;
+five real frames are fingerprinted. Discovery still uses a synthetic corpus.
+
+The deployment token is bound to one Ditto account, not exposed to other accounts.
+Changing the token requires re-running the binding script. Multi-user Instagram
+OAuth and encrypted per-user token storage remain future production work.
+The current server must use one worker; imports are serialized within that worker.
+
+## Gemini drafting
+
+For a pending case choose **Draft with Gemini**, read the data-sharing prompt,
+generate a preview, edit it, then **Save draft**. The existing saved draft is
+unchanged until Save succeeds. Actions still require a separate approval and
+outreach stays sandboxed. No Gemini result changes evidence or policy scores.
+A title, recipient and current draft are sent to Google; no video is sent.
+
+No publishing, messaging or arbitrary repost search is enabled by Instagram import.
+API version defaults to `v25.0`. Tokens expire; regenerate, update the secret and
+rebind when necessary. Webhooks and publishing the Meta app are not needed for
+this read-only tester workflow.

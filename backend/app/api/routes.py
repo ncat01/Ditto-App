@@ -374,3 +374,51 @@ def ai_draft(case_id: str, db: Session = Depends(get_db)):
         raise HTTPException(503, str(exc)) from None
     return {**draft.model_dump(), 'engine': 'Gemini draft preview', 'requiresApproval': True,
         'saved': False, 'sent': False}
+
+# ---------------------------------------------------------------- Instagram test account import
+@router.get('/integrations/instagram/posts')
+def instagram_posts(db: Session = Depends(get_db)):
+    from app.services.instagram_binding import owner_binding
+    from app.providers.instagram import InstagramReader,InstagramUnavailable
+    binding=owner_binding(db.info['user_id'])
+    if not binding:raise HTTPException(403,'Instagram is not linked to this Ditto account. Run the server binding setup first.')
+    db.rollback()
+    try:
+        return [{'id':p.id,'caption':p.caption,'mediaType':p.media_type,'publishedAt':p.timestamp}
+            for p in InstagramReader().media(binding['instagram_user_id'],25)]
+    except InstagramUnavailable as exc:raise HTTPException(503,str(exc)) from None
+
+from threading import Lock
+_instagram_import_lock=Lock()
+
+@router.post('/integrations/instagram/import/{media_id}',response_model=schemas.ContentOut)
+def instagram_import(media_id: str,db: Session = Depends(get_db)):
+    # The Codespaces service uses one worker. Serialize imports to avoid duplicates.
+    with _instagram_import_lock:
+        return _instagram_import(media_id,db)
+
+def _instagram_import(media_id: str,db: Session):
+    from app.services.instagram_binding import owner_binding
+    from app.providers.instagram import InstagramReader,InstagramUnavailable
+    binding=owner_binding(db.info['user_id'])
+    if not binding:raise HTTPException(403,'Instagram is not linked to this Ditto account. Run the server binding setup first.')
+    marker='Instagram:'+media_id
+    item=db.scalar(select(Content).where(Content.user_id==db.info['user_id'],Content.source_platform==marker))
+    if item is None:
+        db.rollback()
+        try:
+            reader=InstagramReader()
+            # Only media returned by the bound account's own-media edge can be imported.
+            posts=reader.media(binding['instagram_user_id'],25)
+            if media_id not in [p.id for p in posts]:raise HTTPException(404,'Post not found in the latest 25 posts of your linked account.')
+            post=reader.media_item(media_id)
+            from datetime import datetime
+            published=datetime.fromisoformat(post.timestamp.replace('Z','+00:00'))
+            data=reader.download_video(post)
+            title=schemas.IngestRequest(title=post.caption[:120] or 'Instagram original',kind='video').title
+            item=case_service.ingest_content(db,title,data,'video')
+            item.source_platform=marker;item.published_at=published;db.commit()
+        except InstagramUnavailable as exc:raise HTTPException(503,str(exc)) from None
+        except ValueError:raise HTTPException(422,'Instagram media could not be decoded or its publication date is invalid.') from None
+    return schemas.ContentOut(id=item.id,title=item.title,kind=item.kind,perceptualHash=item.perceptual_hash,
+        paletteSeed=item.palette_seed,publishedAt=item.published_at,sourcePlatform=item.source_platform)

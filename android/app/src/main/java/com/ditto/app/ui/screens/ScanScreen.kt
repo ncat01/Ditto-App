@@ -112,6 +112,9 @@ fun ScanScreen(onOpenCase: (String) -> Unit) {
         }
 
         item { DemoModeBanner(scanVm.discoveryName) }
+        if(com.ditto.app.core.BackendConnection(context).enabled()) {
+            item { InstagramImportCard(onImported = { scanVm.clear() }) }
+        }
 
         item {
             androidx.compose.material3.OutlinedTextField(value=uploadTitle,onValueChange={uploadTitle=it.take(120)},label={Text("Title for your upload")},singleLine=true,modifier=Modifier.fillMaxWidth())

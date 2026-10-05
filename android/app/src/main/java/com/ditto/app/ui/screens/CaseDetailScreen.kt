@@ -413,6 +413,10 @@ fun CaseDetailScreen(caseId: String, onBack: () -> Unit) {
                                 color = DittoColors.TextSecondary
                             )
                             Spacer(Modifier.height(16.dp))
+                            if(com.ditto.app.core.BackendConnection(androidx.compose.ui.platform.LocalContext.current).enabled()) {
+                                GeminiDraftButton(caseId, !ui.busy) { body -> vm.saveDraft(body, c.plan.tone) }
+                                Spacer(Modifier.height(10.dp))
+                            }
                             PrimaryButton(
                                 text = "Approve action",
                                 onClick = { showApproval = true },

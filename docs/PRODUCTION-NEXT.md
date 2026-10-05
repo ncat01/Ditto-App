@@ -1,20 +1,30 @@
-# Connected test and production next steps
+# Commercial release readiness
 
-SQLite is selected; no Supabase, Firebase or database API key is needed. Connected Android mode uses the authenticated FastAPI backend. Offline mode retains a separate device database.
+Status: NOT READY for commercial launch. The current APK is a debug integration build.
 
-## Launch the selected Codespaces environment
+## Implemented and checked
 
-Source is published to https://github.com/ncat01/Ditto-App. Open **Code ? Codespaces ? Create codespace on main**, wait for setup, and make port **8010** public. Use the forwarded HTTPS URL in Android Connected test. See [the full guide](CODESPACES.md).
+- Pink sunrise/sunset design and bundled licensed fonts.
+- Authenticated server accounts, expiring sessions and private media access.
+- Persistent SQLite database; no database API key is needed.
+- Gemini drafting integration, previously verified against the provider.
+- Per-user Instagram browser OAuth, encrypted token storage, refresh and disconnect. Backend configuration is verified in Codespaces; an actual OAuth login is still pending.
+- Connect Instagram controls in the signup guide, Profile and Originals.
+- Android release tasks require an explicit HTTPS endpoint and privately managed signing credentials. Debug signing is no longer a release fallback.
 
-Git authorization does not include Codespaces API scope, so the initial Codespace must be launched through your GitHub account UI. Never paste a GitHub token into chat or the APK. Provider credentials have not been added.
+## Launch blockers
 
-## Before a production release
+1. Live OAuth login and import must be tested on a device. Meta approval and applicable public-user access requirements remain pending.
+2. Codespaces has idle shutdown and development quotas. Select an always-on host with persistent SQLite/media storage, HTTPS and monitored backups. SQLite is suitable for the initial single-server deployment; no Supabase is required.
+3. Account recovery, verification, deletion and abuse/cost controls need implementation and end-to-end checks.
+4. Discovery still uses synthetic sample content. Live outreach is unavailable. A real discovery source and permitted action transport are needed to deliver the full advertised product. User authorization alone does not enable searching all Instagram posts or messaging arbitrary accounts.
+5. Replace the remaining illustrated tutorial panels with current app screenshots. The connection step now uses the actual Instagram sign-in button.
+6. Prepare operator-specific privacy, terms, support and data-deletion pages, and the required Meta review materials.
+7. Supply a private Android signing key, select a distribution method and test the signed release on devices. Build gates protect packaging; they do not certify commercial readiness.
+8. Validate deployment, restore backups, monitor failures and quotas, and complete a security review of the final configuration.
 
-- Select an always-on host with persistent SQLite and media storage; Codespaces has idle shutdown and metered quotas.
-- Back up SQLite with `backend/scripts/backup_sqlite.py`, back up media separately, and verify restoration.
-- Add password recovery and the desired account verification flow.
-- Implement and verify provider adapters before requesting their credentials, one at a time. Meta access requires appropriate developer permissions and user consent.
-- Replace synthetic discovery and sandbox outreach only after real provider behavior is verified.
-- Produce a release-signed Android package with a privately managed signing key.
+## Release signing configuration
 
-Version 1.3.0-connected-test retains the off-white, charcoal, pink, peach, coral and sunrise-yellow design. Font redistribution licenses are in `font-licenses/`.
+Set DITTO_SIGNING_STORE_FILE, DITTO_SIGNING_STORE_PASSWORD, DITTO_SIGNING_KEY_ALIAS and DITTO_SIGNING_KEY_PASSWORD in the build environment. Keep the key and passwords out of Git. Build with -PdittoApiBaseUrl=https://your-production-host/. Do not use the temporary Codespaces address as the commercial host.
+
+The existing docker-compose.yml remains a development setup with demo mode enabled. Do not publish it as a commercial deployment. Docker runs a single API worker for the current SQLite/import design and disables access logs so authorization query strings are not logged.

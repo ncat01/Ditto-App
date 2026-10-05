@@ -1,3 +1,5 @@
+import java.net.URI
+
 plugins {
     alias(libs.plugins.android.application)
     alias(libs.plugins.kotlin.android)
@@ -27,6 +29,32 @@ android {
         buildConfigField("String", "API_BASE_URL", "\"$apiBaseUrl\"")
     }
 
+    // Credentials belong in the operator environment, never in Gradle/source control.
+    val releaseStore = System.getenv("DITTO_SIGNING_STORE_FILE")
+    if (!releaseStore.isNullOrBlank()) {
+        signingConfigs.create("production") {
+            storeFile = file(releaseStore)
+            storePassword = System.getenv("DITTO_SIGNING_STORE_PASSWORD")
+            keyAlias = System.getenv("DITTO_SIGNING_KEY_ALIAS")
+            keyPassword = System.getenv("DITTO_SIGNING_KEY_PASSWORD")
+        }
+    }
+    gradle.taskGraph.whenReady {
+        if (allTasks.any { it.name.contains("Release") }) {
+            val productionUrl = project.findProperty("dittoApiBaseUrl") as String?
+            val uri = productionUrl?.let { URI(it) }
+            require(uri?.scheme == "https" && !uri.host.isNullOrBlank() && uri.userInfo == null &&
+                uri.query == null && uri.fragment == null && uri.path in listOf("", "/")) {
+                "Release requires -PdittoApiBaseUrl=https://your-production-host/"
+            }
+            require(!releaseStore.isNullOrBlank() && file(releaseStore).isFile &&
+                listOf("DITTO_SIGNING_STORE_PASSWORD", "DITTO_SIGNING_KEY_ALIAS", "DITTO_SIGNING_KEY_PASSWORD")
+                    .all { !System.getenv(it).isNullOrBlank() }) {
+                "Release requires a private production signing key and DITTO_SIGNING_* environment settings."
+            }
+        }
+    }
+
     buildTypes {
         debug {
             isMinifyEnabled = false
@@ -40,9 +68,7 @@ android {
                 getDefaultProguardFile("proguard-android-optimize.txt"),
                 "proguard-rules.pro"
             )
-            // Demo/release signing so a runnable release APK can be produced for the
-            // capstone demo. Replace with a real keystore for any production release.
-            signingConfig = signingConfigs.getByName("debug")
+            signingConfig = signingConfigs.findByName("production")
         }
     }
 

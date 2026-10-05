@@ -59,10 +59,10 @@ class Settings(BaseSettings):
         """Human-readable status for /api/health, so callers know what is real."""
         return {
             "ai_drafting": (f"Gemini ({self.gemini_model}): key configured; connectivity not verified by health" if self.gemini_api_key.get_secret_value() else "Gemini: key not configured"),
-            "instagram": ("Instagram Login: token configured; run check_instagram.py to verify" if self.has_meta else "Instagram Login: token not configured"),
+            "instagram": ("Instagram OAuth: app secret configured; live sign-in not verified by health" if self.instagram_app_secret.get_secret_value() else "Instagram OAuth: app secret not configured"),
             "verification":"Demo Verification Agent (deterministic rules; no LLM called)",
             "discovery":"Demo discovery corpus (synthetic, no live scraping)",
-            "own_content":"Local uploads in app; Instagram profile/media read adapter available via server scripts, not yet linked to a Ditto account",
+            "own_content":"Private uploads and per-user Instagram OAuth import; each user must authorize their own connection",
             "outreach":"Sandboxed — messages are recorded, never transmitted",
             "matching":"Measured five-frame pHash (local)",
             "manipulation":"Unavailable; simulated evidence only",

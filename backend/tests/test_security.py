@@ -4,7 +4,7 @@ os.environ['DITTO_DATABASE_URL']='sqlite:///'+tempfile.mktemp(suffix='.db')
 from fastapi.testclient import TestClient
 from app.main import app
 
-def test_accounts_isolation_sessions_and_pipeline():
+def test_accounts_isolation_sessions_and_pipeline(monkeypatch):
     with TestClient(app) as client:
         def signup(email):
             response=client.post('/api/auth/signup',json={'email':email,'password':'secure-demo-123'})
@@ -34,7 +34,17 @@ def test_accounts_isolation_sessions_and_pipeline():
         assert client.post('/api/cases/'+cid+'/approve',headers=b,json={}).status_code==404
         pending=next(c for c in cases if c['currentState']=='pending_approval')
         cid=pending['id']
+        from app.providers import gemini
+        def preview(context):
+            return gemini.Draft(subject='Sample subject',body='Sample preview')
+        monkeypatch.setattr(gemini,'generate_draft',preview)
+        assert client.post('/api/cases/'+cid+'/ai-draft',headers=b).status_code==404
+        draft=client.post('/api/cases/'+cid+'/ai-draft',headers=a)
+        assert draft.status_code==200
+        assert draft.json()['saved'] is False and draft.json()['sent'] is False
+        assert client.get('/api/cases/'+cid,headers=a).json()['draftBody']==pending['draftBody']
         assert client.post('/api/cases/'+cid+'/approve',headers=a,json={}).status_code==200
+        assert client.post('/api/cases/'+cid+'/ai-draft',headers=a).status_code==409
         assert client.post('/api/cases/'+cid+'/approve',headers=a,json={}).status_code==409
         assert client.post('/api/auth/logout',headers=a).status_code==200
         assert client.get('/api/auth/me',headers=a).status_code==401

@@ -7,7 +7,7 @@ so the API never claims a live integration it does not have (report §51).
 from __future__ import annotations
 
 from functools import lru_cache
-from pydantic import AliasChoices, Field
+from pydantic import AliasChoices, Field, SecretStr
 
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
@@ -23,6 +23,8 @@ class Settings(BaseSettings):
     google_cloud_api_key: str = ""
     meta_ad_library_token: str = ""
     llm_api_key: str = ""
+    gemini_api_key: SecretStr = SecretStr("")
+    gemini_model: str = Field(default="gemini-3.5-flash-lite", pattern=r"^gemini-[a-zA-Z0-9.-]+$")
 
     smtp_host: str = ""
     smtp_port: int = 0
@@ -51,6 +53,7 @@ class Settings(BaseSettings):
     def provider_status(self) -> dict[str, str]:
         """Human-readable status for /api/health, so callers know what is real."""
         return {
+            "ai_drafting": (f"Gemini ({self.gemini_model}): key configured; connectivity not verified by health" if self.gemini_api_key.get_secret_value() else "Gemini: key not configured"),
             "verification":"Demo Verification Agent (deterministic rules; no LLM called)",
             "discovery":"Demo discovery corpus (synthetic, no live scraping)",
             "own_content":"Local upload only (Meta adapter unavailable in this build)",

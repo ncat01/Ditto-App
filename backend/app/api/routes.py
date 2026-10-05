@@ -353,3 +353,24 @@ def read_notification(notification_id: str, db: Session = Depends(get_db)):
     n=db.get(Notification,notification_id)
     if not n or n.user_id!=db.info["user_id"]:raise HTTPException(404,"Notification unavailable")
     n.read=True;db.commit();return {"read":True}
+
+@router.post("/cases/{case_id}/ai-draft")
+def ai_draft(case_id: str, db: Session = Depends(get_db)):
+    """Explicit Gemini preview; the existing approval and edit flow remains authoritative."""
+    from app.providers.gemini import generate_draft, ProviderUnavailable
+    case = db.get(Case, case_id)
+    if not case or case.content.user_id != db.info['user_id']:
+        raise HTTPException(404, 'Case unavailable')
+    if case.current_state not in ('pending_approval', 'escalated') or case.recommended_action == 'log_only':
+        raise HTTPException(409, 'Only a pending action can have an AI draft')
+    context = {'title': case.content.title[:200], 'recipient': case.candidate.account_handle[:128],
+        'action': case.recommended_action, 'tone': case.tone,
+        'existing_draft': (case.draft_body or '')[:4000], 'sandbox': True}
+    # Release the read transaction during the provider network call. No case data is mutated.
+    db.rollback()
+    try:
+        draft = generate_draft(context)
+    except ProviderUnavailable as exc:
+        raise HTTPException(503, str(exc)) from None
+    return {**draft.model_dump(), 'engine': 'Gemini draft preview', 'requiresApproval': True,
+        'saved': False, 'sent': False}

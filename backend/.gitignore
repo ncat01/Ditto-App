@@ -1,0 +1,7 @@
+__pycache__/
+*.pyc
+.env
+ditto.db
+.venv/
+venv/
+.pytest_cache/

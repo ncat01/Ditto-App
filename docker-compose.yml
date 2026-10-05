@@ -1,0 +1,33 @@
+# Ditto backend. SQLite by default so this runs with no external services.
+# Uncomment the `db` service and swap DITTO_DATABASE_URL for PostgreSQL.
+services:
+  backend:
+    build:
+      context: .
+      dockerfile: backend/Dockerfile
+    ports:
+      - "8010:8010"
+    environment:
+      DITTO_DATABASE_URL: sqlite:////data/ditto.db
+      DITTO_DEMO_MODE: "true"
+      DITTO_MEDIA_ROOT: /data/media
+      # Provider keys are optional; each falls back to Demo Mode when unset.
+      # META_ACCESS_TOKEN: ""
+      # GOOGLE_CLOUD_API_KEY: ""
+      # LLM_API_KEY: ""
+    volumes:
+      - ditto-data:/data
+    restart: unless-stopped
+
+  # db:
+  #   image: postgres:16-alpine
+  #   environment:
+  #     POSTGRES_USER: ditto
+  #     POSTGRES_PASSWORD: change-me
+  #     POSTGRES_DB: ditto
+  #   volumes:
+  #     - ditto-pg:/var/lib/postgresql/data
+
+volumes:
+  ditto-data:
+  # ditto-pg:

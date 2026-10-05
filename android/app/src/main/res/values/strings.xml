@@ -1,0 +1,5 @@
+<resources>
+    <string name="app_name">Ditto</string>
+    <string name="tagline">Stay on it until it\'s resolved.</string>
+    <string name="splash_subtitle">Content credit, followed through.</string>
+</resources>

@@ -1,0 +1,12 @@
+android/
+apk/
+output/
+**/.env
+**/.venv/
+**/__pycache__/
+**/.pytest_cache/
+**/private_media/
+**/*.db
+**/*.db-shm
+**/*.db-wal
+*.pptx

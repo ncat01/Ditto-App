@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <color name="ditto_background">#FFFAF5</color>
+    <color name="ditto_primary_blue">#B72F65</color>
+    <color name="ditto_deep_blue">#63313C</color>
+</resources>

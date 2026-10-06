@@ -16,13 +16,13 @@
 
 | Requirement | Current state | What closes it |
 | --- | --- | --- |
-| Durable hosted backend | SQLite/FastAPI remains active. Appwrite TablesDB is provisioned but inactive. | Implement/test the Appwrite metadata/authentication migration and Functions deployment, or provision an always-on host for the prepared persistent Docker backend. |
+| Durable hosted backend | SQLite/FastAPI remains active. The separate [Appwrite candidate](APPWRITE-CLOUD.md) has private accounts/sessions, resumable uploads and durable workers with local tests. | Complete Instagram/case/discovery routes, Android protocol integration, existing-data migration and live Functions deployment/verification. |
 | Appwrite deployment access | The key is in Codespaces; this local session has no authenticated Appwrite management connection. The key lacks Functions deployment and schema creation scopes. | Operator-owned deployment access through a supported connection or private runner, after a deployable implementation exists. Do not paste a key in chat. |
 | Public Instagram access | Secret/redirect configuration is checked; public-user access is not verified. | Live two-account device OAuth/import tests and applicable Meta review/approval. |
 | Email delivery | Recovery/verification code exists; production SMTP is not supplied or verified. | Private SMTP configuration and real inbox tests, including expiry and session revocation. |
 | Reverse search | Provider adapter, consent and cost limits exist; Google configuration/billing is pending. | Operator-approved provider configuration and live search/quota tests. |
 | Live outreach/follow-up | No live message transport exists; production refuses dispatch. | Implement a permitted transport, delivery/audit/retry handling and end-to-end checks. |
-| Public policies | Draft pages exist; support email is set. Operator identity and retention policy are missing. | Operator-specific identity, retention/backup policy and review of published documents. |
+| Public policies | Draft pages identify Svarsha T and support email. Retention policy is missing. | Define retention/backup policy and review published documents. |
 | Android distribution | Debug APK available; private release signing gates exist. | Owner-held keystore, stable backend origin, signed APK/AAB and device/store checks. |
 | Operations | Docker/Caddy files and local backup tests exist. No production runtime is verified. | Hosted startup, monitoring, restore drill and Appwrite file retention/export checks. |
 

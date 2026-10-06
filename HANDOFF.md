@@ -1,4 +1,12 @@
-# Current delivery: guided test 1.5.0
+# Current delivery: integration 1.6.0 and Appwrite backend candidate
+
+The Android artifact remains `apk/DITTO-1.6.0-integration-debug.apk`. Commercial deployment is unfinished; see [current launch status](docs/PRODUCTION-NEXT.md). The isolated [Appwrite candidate](docs/APPWRITE-CLOUD.md) now contains private account/session storage, resumable media uploads and background processing. It is not the active backend, and the current Android build must not be pointed at it. Validation: 124 backend tests pass. Public operator is Svarsha T; support is svarsha.t@gmail.com.
+
+Earlier deliveries below are historical.
+
+---
+
+# Historical delivery: guided test 1.5.0
 
 Install `apk/DITTO-guided-test-debug.apk`. Five illustrated tutorial steps appear after first sign-in/sign-up for each account. Replay from Profile ? How to use Ditto. Steps adapt to offline/connected mode and accurately describe the current Instagram test-account binding requirement. Completion does not perform or imply an Instagram authorization.
 

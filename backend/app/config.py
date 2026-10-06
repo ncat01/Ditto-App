@@ -37,7 +37,7 @@ class Settings(BaseSettings):
     gemini_model: str = Field(default="gemini-3.5-flash-lite", pattern=r"^gemini-[a-zA-Z0-9.-]+$")
 
     support_email: str = "svarsha.t@gmail.com"
-    operator_name: str = ""
+    operator_name: str = "Svarsha T"
     smtp_from: str = ""
     smtp_host: str = ""
     smtp_port: int = 0

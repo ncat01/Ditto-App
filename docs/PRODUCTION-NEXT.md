@@ -1,38 +1,41 @@
-# Commercial release readiness
+# Commercial launch status
 
-Status: NOT READY for commercial launch. The current APK is a debug integration build.
+**Not deployed. Not ready for public commercial launch.** The Android download is a debug integration build. This applies to the full advertised detection, review, outreach and follow-up product.
 
-## Implemented and checked
+## Implemented
 
-- Pink sunrise/sunset design and bundled licensed fonts.
-- Authenticated server accounts, expiring sessions and private media access.
-- Persistent SQLite database; no database API key is needed.
-- Gemini drafting integration, previously verified against the provider.
-- Per-user Instagram browser OAuth, encrypted token storage, refresh and disconnect. Backend configuration is verified in Codespaces; an actual OAuth login is still pending.
-- Connect Instagram controls in the signup guide, Profile and Originals.
-- Android release tasks require an explicit HTTPS endpoint and privately managed signing credentials. Debug signing is no longer a release fallback.
+- Account signup/login, expiring sessions, recovery, email verification, password-confirmed deletion and request limits.
+- Per-user Instagram browser authorization, encrypted tokens, refresh, disconnect and own-media import. Live sign-in on a device remains unverified.
+- Private Appwrite uploads and Instagram imports, owner-checked playback, failed-upload cleanup and durable account-deletion retries. Local copies are retained for hashing and backups.
+- Measured image/video pHash comparison and consented Google web-image search. Search links are unverified leads; these features do not search all Instagram content or determine infringement.
+- Signup tutorial using actual Ditto screenshots and an Instagram connection button.
+- Non-root Docker deployment configuration, HTTPS proxy, backup/restore scripts and release signing gates.
+- Production refuses sample scanning, sample evaluation/media, demo clock changes, simulated follow-ups and approvals without a live transport.
 
-## Launch blockers
+## Remaining work and dependencies
 
-### Current implementation update (1.6.0)
+| Requirement | Current state | What closes it |
+| --- | --- | --- |
+| Durable hosted backend | SQLite/FastAPI remains active. Appwrite TablesDB is provisioned but inactive. | Implement/test the Appwrite metadata/authentication migration and Functions deployment, or provision an always-on host for the prepared persistent Docker backend. |
+| Appwrite deployment access | The key is in Codespaces; this local session has no authenticated Appwrite management connection. The key lacks Functions deployment and schema creation scopes. | Operator-owned deployment access through a supported connection or private runner, after a deployable implementation exists. Do not paste a key in chat. |
+| Public Instagram access | Secret/redirect configuration is checked; public-user access is not verified. | Live two-account device OAuth/import tests and applicable Meta review/approval. |
+| Email delivery | Recovery/verification code exists; production SMTP is not supplied or verified. | Private SMTP configuration and real inbox tests, including expiry and session revocation. |
+| Reverse search | Provider adapter, consent and cost limits exist; Google configuration/billing is pending. | Operator-approved provider configuration and live search/quota tests. |
+| Live outreach/follow-up | No live message transport exists; production refuses dispatch. | Implement a permitted transport, delivery/audit/retry handling and end-to-end checks. |
+| Public policies | Draft pages exist; support email is set. Operator identity and retention policy are missing. | Operator-specific identity, retention/backup policy and review of published documents. |
+| Android distribution | Debug APK available; private release signing gates exist. | Owner-held keystore, stable backend origin, signed APK/AAB and device/store checks. |
+| Operations | Docker/Caddy files and local backup tests exist. No production runtime is verified. | Hosted startup, monitoring, restore drill and Appwrite file retention/export checks. |
 
-Account recovery, verification, deletion, abuse limits, consented Google web-image search, measured candidate comparison and real tutorial screenshots are now implemented locally. Appwrite chunked storage, owner-checked playback and durable cleanup are implemented behind DITTO_MEDIA_STORAGE=appwrite. The user verified a private generated-image upload/deletion in Codespaces. These changes require the updated source; they are not a commercial deployment.
+## Hosting constraint
 
-Appwrite TablesDB Originals is provisioned but is **not the active metadata store**. Accounts, sessions, cases and evidence still use SQLite. Appwrite Functions/metadata migration is unfinished. Existing Instagram-import ingestion still stores its media locally. A durable always-on backend is still needed for this architecture; Codespaces is development infrastructure.
+The user's no-card requirement remains in effect. Appwrite TablesDB uses managed APIs rather than a SQLAlchemy connection. A Functions deployment needs durable request-scoped storage and asynchronous processing for slow video/provider work; copying SQLite into a Function is not a valid migration. Synchronous Functions have a 30-second limit: https://appwrite.io/docs/products/functions/execute .
 
-Privacy/terms/deletion pages are factual drafts. SMTP credentials, actual operator identity, live recovery delivery, Meta public-user approval, Google billing-enabled discovery, live outreach implementation, release signing and real deployment/restore checks remain outstanding. No commercial-ready claim is justified. The numbered items below are the earlier audit; the update above records work completed since that audit.
+Appwrite native PostgreSQL could preserve more of the existing ORM, but its documented setup requires a paid plan and payment method and starts at $10/month. Do not activate it under the current authorization: https://appwrite.io/docs/products/databases/postgresql .
 
-1. Live OAuth login and import must be tested on a device. Meta approval and applicable public-user access requirements remain pending.
-2. Codespaces has idle shutdown and development quotas. Select an always-on host with persistent SQLite/media storage, HTTPS and monitored backups. SQLite is suitable for the initial single-server deployment; no Supabase is required.
-3. Account recovery, verification, deletion and abuse/cost controls need implementation and end-to-end checks.
-4. Discovery still uses synthetic sample content. Live outreach is unavailable. A real discovery source and permitted action transport are needed to deliver the full advertised product. User authorization alone does not enable searching all Instagram posts or messaging arbitrary accounts.
-5. Replace the remaining illustrated tutorial panels with current app screenshots. The connection step now uses the actual Instagram sign-in button.
-6. Prepare operator-specific privacy, terms, support and data-deletion pages, and the required Meta review materials.
-7. Supply a private Android signing key, select a distribution method and test the signed release on devices. Build gates protect packaging; they do not certify commercial readiness.
-8. Validate deployment, restore backups, monitor failures and quotas, and complete a security review of the final configuration.
+## One development update
 
-## Release signing configuration
+Use the batch in [DEPLOYMENT.md](DEPLOYMENT.md) to verify the updated Codespaces backend. This does not deploy a commercial service. Project creation, storage checks, passing tests and renaming the app do not close the requirements above.
 
-Set DITTO_SIGNING_STORE_FILE, DITTO_SIGNING_STORE_PASSWORD, DITTO_SIGNING_KEY_ALIAS and DITTO_SIGNING_KEY_PASSWORD in the build environment. Keep the key and passwords out of Git. Build with -PdittoApiBaseUrl=https://your-production-host/. Do not use the temporary Codespaces address as the commercial host.
+## Signing
 
-The existing docker-compose.yml remains a development setup with demo mode enabled. Do not publish it as a commercial deployment. Docker runs a single API worker for the current SQLite/import design and disables access logs so authorization query strings are not logged.
+Set DITTO_SIGNING_STORE_FILE, DITTO_SIGNING_STORE_PASSWORD, DITTO_SIGNING_KEY_ALIAS and DITTO_SIGNING_KEY_PASSWORD privately. Build with `-PdittoApiBaseUrl=https://your-production-host/`. Debug signing is never a release fallback. The development docker-compose.yml enables demo mode and must not be used as the public deployment.

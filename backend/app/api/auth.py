@@ -4,7 +4,7 @@ import hmac
 import secrets
 import uuid
 from datetime import datetime, timedelta, timezone
-from fastapi import APIRouter, Depends, HTTPException, Request
+from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Request
 from pydantic import BaseModel, Field
 from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError
@@ -90,8 +90,8 @@ class PasswordReset(TokenRequest):
     password: str = Field(min_length=10, max_length=128)
 
 @router.post('/recovery')
-def request_recovery(body: EmailRequest, request: Request):
-    from app.services.account_email import require_email, send_account_email
+def request_recovery(body: EmailRequest, request: Request, background_tasks: BackgroundTasks):
+    from app.services.account_email import require_email
     from app.services.request_budget import consume
     from app.models.account_security import AccountToken
     from sqlalchemy import delete
@@ -105,8 +105,26 @@ def request_recovery(body: EmailRequest, request: Request):
             db.execute(delete(AccountToken).where(AccountToken.user_id == user.id, AccountToken.purpose == 'reset'))
             row = AccountToken(token_hash=hashlib.sha256(token.encode()).hexdigest(), user_id=user.id, purpose='reset', expires_at=datetime.now(timezone.utc).replace(tzinfo=None)+timedelta(minutes=30))
             db.add(row); db.commit()
-            send_account_email(user.email, 'reset', token)
+            background_tasks.add_task(_deliver_recovery, user.email, token)
     return {'message': 'If the account exists, a password reset email will arrive shortly.'}
+
+
+def _deliver_recovery(email, token):
+    """SMTP outages must not reveal whether the recovery email is registered."""
+    from app.services.account_email import send_account_email
+    try:
+        send_account_email(email, 'reset', token)
+    except HTTPException:
+        from app.models.account_security import AccountToken
+        from sqlalchemy import delete
+        import logging
+        # Invalidate the undelivered link. A later request can safely retry.
+        with SessionLocal() as db:
+            db.execute(delete(AccountToken).where(
+                AccountToken.token_hash == hashlib.sha256(token.encode()).hexdigest(),
+                AccountToken.purpose == 'reset'))
+            db.commit()
+        logging.getLogger(__name__).warning('Password recovery delivery failed; retry required.')
 
 @router.post('/reset-password')
 def reset_password(body: PasswordReset):

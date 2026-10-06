@@ -13,7 +13,7 @@ git pull --ff-only
 DITTO_MEDIA_STORAGE=appwrite .venv/bin/python backend/scripts/codespaces.py start
 ```
 
-This is a development check. Existing local originals remain readable; new direct uploads use Appwrite and keep a local hashing copy. Maximum is 20,000,000 bytes. Formats are JPEG, PNG, WebP, MP4 and MOV. Existing Instagram-import ingestion still stores locally.
+This is a development check. Existing local originals remain readable; new direct uploads and Instagram imports use Appwrite and keep a local hashing copy. Maximum is 20,000,000 bytes. Direct upload formats are JPEG, PNG, WebP, MP4 and MOV; Instagram video imports use MP4. Existing originals are not automatically migrated.
 
 Verify with two fresh accounts: upload/play on A; B must receive 404 for A's media. Delete A and verify the remote file disappears after cleanup. APPWRITE_API_KEY stays on the server.
 

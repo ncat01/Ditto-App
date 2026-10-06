@@ -124,13 +124,8 @@ async def upload_content(
         kind = "video" if file.content_type.startswith("video") else "image"
 
     clean_title = schemas.IngestRequest(title=title, kind=kind).title
-    remote_file_id = None
-    remote_name = None
+    extension = None
     if settings.media_storage == 'appwrite':
-        import uuid
-        from datetime import datetime, timedelta, timezone
-        from app.database.db import SessionLocal
-        from app.models.remote_media import RemoteMediaDeletion
         extensions = {'image/jpeg': 'jpg', 'image/png': 'png', 'image/webp': 'webp',
                       'video/mp4': 'mp4', 'video/quicktime': 'mov'}
         if not file or not data:
@@ -139,40 +134,15 @@ async def upload_content(
             raise HTTPException(415, 'Appwrite uploads support JPEG, PNG, WebP, MP4 and MOV.')
         if len(data) > 20_000_000:
             raise HTTPException(413, 'Appwrite uploads are limited to 20 MB.')
-        remote_file_id = uuid.uuid4().hex
-        remote_name = remote_file_id + '.' + extensions[file.content_type]
-        # Reserve cleanup before any network upload; it survives crashes and rollback.
-        with SessionLocal() as cleanup_db:
-            cleanup_db.add(RemoteMediaDeletion(file_id=remote_file_id,
-                not_before=datetime.now(timezone.utc) + timedelta(minutes=10)))
-            cleanup_db.commit()
-    item = None
+        extension = extensions[file.content_type]
     try:
-        item = case_service.ingest_content(db, clean_title, data, kind, commit=False)
-        if remote_file_id:
-            from pathlib import Path
-            from starlette.concurrency import run_in_threadpool
-            from app.providers.appwrite_storage import upload_private
-            from app.models.remote_media import RemoteMedia, RemoteMediaDeletion
-            await run_in_threadpool(upload_private, Path(item.local_uri), remote_file_id, remote_name)
-            db.add(RemoteMedia(content_id=item.id, user_id=db.info['user_id'], file_id=remote_file_id))
-            pending = db.get(RemoteMediaDeletion, remote_file_id)
-            if pending:
-                db.delete(pending)
-        item.user_id = db.info['user_id']
-        item.source_platform = schemas._sanitize(source)[:64] or 'Local upload'
-        db.commit()
+        from starlette.concurrency import run_in_threadpool
+        from app.services.media_ingestion import persist_original
+        item = await run_in_threadpool(persist_original, db, clean_title, data, kind,
+            schemas._sanitize(source)[:64] or 'Local upload', extension=extension)
     except ValueError as exc:
-        db.rollback()
-        if item and item.local_uri:
-            from pathlib import Path
-            Path(item.local_uri).unlink(missing_ok=True)
         raise HTTPException(422,str(exc)) from exc
     except Exception as exc:
-        db.rollback()
-        if item and item.local_uri:
-            from pathlib import Path
-            Path(item.local_uri).unlink(missing_ok=True)
         from app.providers.appwrite import AppwriteUnavailable
         if isinstance(exc, AppwriteUnavailable):
             raise HTTPException(503, 'Remote upload failed; no original was saved. Please retry later.') from None
@@ -246,6 +216,8 @@ def _mutate(fn, *args):
 def approve(
     case_id: str, body: schemas.ApproveRequest, db: Session = Depends(get_db)
 ) -> schemas.CaseOut:
+    if not settings.demo_mode and not settings.outreach_is_live:
+        raise HTTPException(503, 'Live outreach is not connected. No message was sent.')
     return _mutate(case_service.approve_case, db, case_id, body.editedBody, body.tone)
 
 
@@ -267,6 +239,8 @@ def edit_action(
 def simulate_followup(
     case_id: str, body: schemas.FollowUpRequest, db: Session = Depends(get_db)
 ) -> schemas.CaseOut:
+    if not settings.demo_mode:
+        raise HTTPException(409, 'Simulated follow-ups are unavailable outside demo mode.')
     return _mutate(case_service.run_follow_up, db, case_id, body.outcome)
 
 
@@ -341,6 +315,8 @@ def seed_demo(force: bool = False, db: Session = Depends(get_db)) -> dict:
 @router.get("/demo/ground-truth")
 def ground_truth() -> dict:
     """Labelled ground truth for the evaluation harness (report §9)."""
+    if not settings.demo_mode:
+        raise HTTPException(404, 'Sample evaluation data unavailable')
     return {
         "matcher": hasher.DISPLAY_NAME,
         "corpus": corpus.DISPLAY_NAME,
@@ -377,6 +353,8 @@ def media(content_id: str, db: Session = Depends(get_db)):
 @router.get("/cases/{case_id}/candidate-media")
 def candidate_media(case_id: str, db: Session = Depends(get_db)):
     """Only the matching generated asset, after checking this case's owner."""
+    if not settings.demo_mode:
+        raise HTTPException(404, 'Sample candidate media unavailable')
     from pathlib import Path
     from fastapi.responses import FileResponse
     case=db.get(Case,case_id)
@@ -479,9 +457,14 @@ def _instagram_import(media_id: str,db: Session):
             published=datetime.fromisoformat(post.timestamp.replace('Z','+00:00'))
             data=reader.download_video(post)
             title=schemas.IngestRequest(title=post.caption[:120] or 'Instagram original',kind='video').title
-            item=case_service.ingest_content(db,title,data,'video')
-            item.source_platform=marker;item.published_at=published;db.commit()
+            from app.services.media_ingestion import persist_original
+            item=persist_original(db,title,data,'video',marker,extension='mp4',published_at=published)
         except InstagramUnavailable as exc:raise HTTPException(503,str(exc)) from None
-        except ValueError:raise HTTPException(422,'Instagram media could not be decoded or its publication date is invalid.') from None
+        except ValueError:raise HTTPException(422,'Instagram media is invalid or exceeds the configured storage limit.') from None
+        except Exception as exc:
+            from app.providers.appwrite import AppwriteUnavailable
+            if isinstance(exc, AppwriteUnavailable):
+                raise HTTPException(503, 'Remote import failed; no original was saved. Please retry later.') from None
+            raise
     return schemas.ContentOut(id=item.id,title=item.title,kind=item.kind,perceptualHash=item.perceptual_hash,
         paletteSeed=item.palette_seed,publishedAt=item.published_at,sourcePlatform=item.source_platform)

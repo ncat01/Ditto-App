@@ -12,4 +12,4 @@ The earlier META_ACCESS_TOKEN and bind_instagram.py setup are developer checks o
 
 ## Release limits
 
-This is an integration build, not a commercial release. A working sign-in must still be verified against Meta. Public users need the applicable Meta review and access approval. Codespaces is a development environment. Imports access the connected user's own media; this does not provide platform-wide repost discovery. The current discovery and outgoing action system remains a sandbox.
+This is an integration build, not a commercial release. A working sign-in must still be verified against Meta. Public users need the applicable Meta review and access approval. Codespaces is a development environment. Imports access the connected user's own media; this does not provide platform-wide repost discovery. Consented Google web-image search and submitted-media comparison are implemented separately; the Google provider remains unconfigured. Live outreach is unavailable and production refuses sandbox dispatch. With DITTO_MEDIA_STORAGE=appwrite, new Instagram video imports use the same private Appwrite storage and cleanup path as direct uploads.

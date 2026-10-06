@@ -88,3 +88,22 @@ def test_login_budget_and_safe_account_pages():
         assert "frame-ancestors 'none'" in page.headers['Content-Security-Policy']
         assert 'history.replaceState' in page.text
         assert client.get('/account/unknown').status_code == 404
+
+
+def test_smtp_outage_does_not_disclose_a_registered_recovery_address(monkeypatch):
+    from fastapi import HTTPException
+    captured = []
+    monkeypatch.setattr(account_email, 'require_email', lambda: None)
+    def fail(email, purpose, token):
+        captured.append(token)
+        raise HTTPException(503, 'Mail service unavailable')
+    monkeypatch.setattr(account_email, 'send_account_email', fail)
+    with TestClient(app) as client:
+        email, _, _ = signup(client)
+        known = client.post('/api/auth/recovery', json={'email': email})
+        unknown = client.post('/api/auth/recovery', json={
+            'email': 'missing-' + secrets.token_hex(8) + '@example.test'})
+        assert known.status_code == unknown.status_code == 200
+        assert known.json() == unknown.json()
+        with SessionLocal() as db:
+            assert db.get(AccountToken, hashlib.sha256(captured[0].encode()).hexdigest()) is None

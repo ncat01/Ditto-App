@@ -114,6 +114,19 @@ def private_storage(client):
         raise ValueError('Required media extensions are unavailable')
 
 
+def configure_storage(client):
+    """Apply approved private-media policy together; preserve other bucket flags."""
+    path = '/storage/buckets/' + BUCKET
+    current = client.request('GET', path)
+    if current.get('$permissions') != []:
+        raise ValueError('Unexpected bucket access; review before changing permissions')
+    body = {key: current[key] for key in ('name', 'enabled', 'compression', 'antivirus', 'transformations') if key in current}
+    body.update(permissions=[], fileSecurity=True, encryption=True, maximumFileSize=20_000_000,
+                allowedFileExtensions=['jpg', 'jpeg', 'png', 'webp', 'mp4', 'mov'])
+    client.request('PUT', path, json=body)
+    private_storage(client)
+
+
 def definition(identity):
     return {'name': 'Ditto API' if identity == 'ditto-api' else 'Ditto private worker',
             'execute': [], 'events': [], 'schedule': '', 'timeout': 30 if identity == 'ditto-api' else 300, 'enabled': False,
@@ -259,6 +272,7 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--stage', action='store_true')
     parser.add_argument('--verify', action='store_true')
+    parser.add_argument('--configure-storage', action='store_true', help='Apply the approved private bucket settings together; requires buckets.write.')
     args = parser.parse_args()
     # Reuse the existing private Codespaces encryption key, preserving migrated
     # Instagram credentials. Never generate a replacement for an existing key.
@@ -268,7 +282,7 @@ def main():
         value = old_key.read_text(encoding='utf-8').strip()
         Fernet(value.encode())
         os.environ['TOKEN_ENCRYPTION_KEY'] = value
-    if not args.stage and not args.verify:
+    if not args.stage and not args.verify and not args.configure_storage:
         print(json.dumps(plan(), indent=2))
         return
     key = os.getenv('APPWRITE_DEPLOY_KEY')
@@ -280,6 +294,11 @@ def main():
         # A development origin cannot become the commercial callback by accident.
         os.environ.pop('PUBLIC_BASE_URL', None)
     with Client(key) as client:
+        if args.configure_storage:
+            configure_storage(client)
+            if not args.stage and not args.verify:
+                print('Private bucket settings verified. No files deleted or deployment published.')
+                return
         if args.stage:
             print('Deployment step: verify private storage settings', flush=True)
             private_storage(client)

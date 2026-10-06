@@ -147,7 +147,13 @@ def definition(identity):
 
 def select_media_runtime(client):
     global RUNTIME
-    available = client.request('GET', '/functions/runtimes').get('runtimes', [])
+    # Runtime discovery is public; sending a project-scoped server key can
+    # trigger an unrelated scope rejection on this endpoint.
+    import httpx
+    response = httpx.get('https://sgp.cloud.appwrite.io/v1/functions/runtimes',
+        headers={'X-Appwrite-Project': '6ac46d45002b91afdd73'}, timeout=30)
+    response.raise_for_status()
+    available = response.json().get('runtimes', [])
     ids = {item.get('$id', item.get('key', item.get('id'))) for item in available}
     for candidate in ('python-ml-3.12', 'python-ml-3.11'):
         if candidate in ids:

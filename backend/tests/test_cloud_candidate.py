@@ -23,6 +23,7 @@ def test_inline_table_indexes_use_attributes_without_changing_stored_schema():
     original = copy.deepcopy(TABLES)
     for spec in TABLES:
         request = table_creation(spec)
+        assert all(not column.get('encrypt') for column in request['columns'])
         for expected, sent in zip(spec['indexes'], request['indexes']):
             assert sent['attributes'] == expected['columns']
             assert 'columns' not in sent

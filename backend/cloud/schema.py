@@ -5,7 +5,9 @@ from cloud.client import ACCOUNTS, BUDGETS, RECORDS
 def table_creation(spec):
     # Inline table creation uses "attributes" for indexes; the separate
     # create-index endpoint and returned index model use "columns".
-    return {**spec, 'indexes': [
+    # Encrypted columns are created through their dedicated endpoint because
+    # inline creation on the hosted service did not retain encrypt=True.
+    return {**spec, 'columns': [c for c in spec['columns'] if not c.get('encrypt')], 'indexes': [
         {**{key: value for key, value in index.items() if key != 'columns'},
          'attributes': list(index['columns'])} for index in spec['indexes']]}
 

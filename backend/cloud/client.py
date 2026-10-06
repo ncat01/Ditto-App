@@ -7,7 +7,7 @@ from app.config import get_settings
 
 DATABASE = '6ac4777b0032876fc1cc'
 ACCOUNTS = 'ditto_accounts_v2'
-RECORDS = 'ditto_records_v2'
+RECORDS = 'ditto_records_v3'
 BUDGETS = 'ditto_budgets_v2'
 
 

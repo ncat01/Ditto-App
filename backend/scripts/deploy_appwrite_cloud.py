@@ -81,6 +81,10 @@ def schema(client, sleep=time.sleep):
             columns = {row['key']: row for row in existing.get('columns', [])}
             indexes = {row['key']: row for row in existing.get('indexes', [])}
             if attempt == 0:
+                for expected in spec['columns']:
+                    if expected.get('encrypt') and expected['key'] not in columns:
+                        body = {k: v for k, v in expected.items() if k != 'type'}
+                        client.request('POST', path + '/columns/' + expected['type'], json=body)
                 for expected in spec['indexes']:
                     if expected['key'] not in indexes:
                         client.request('POST', path + '/indexes', json=expected)

@@ -8,7 +8,10 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 ALLOW = ['app/__init__.py', 'app/config.py', 'app/matching/__init__.py',
          'app/matching/hasher.py', 'app/matching/video.py',
-         'app/services/__init__.py', 'app/services/account_email.py']
+         'app/services/__init__.py', 'app/services/account_email.py',
+         'app/api/__init__.py', 'app/api/account_pages.py', 'app/api/legal_pages.py',
+         'app/providers/__init__.py', 'app/providers/instagram.py',
+         'app/providers/web_search.py', 'app/providers/gemini.py']
 
 
 def package(target):

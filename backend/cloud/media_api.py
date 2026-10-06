@@ -179,6 +179,21 @@ def originals(account=Depends(current), store=Depends(get_store)):
     return [public_original(row) for row in store.owned_rows(account['$id'], 'original', state='ready')]
 
 
+@router.get('/{content_id}/scans')
+def processing_history(content_id: str, account=Depends(current), store=Depends(get_store)):
+    store.owned(account['$id'], content_id, 'original')
+    results = []
+    for row in store.owned_rows(account['$id'], 'job', limit=100):
+        value = payload(row)
+        args = value['args']
+        if content_id not in (args.get('originalId'), args.get('uploadId')):
+            continue
+        result = value.get('result') or {}
+        results.append({'id': row['$id'], 'stage': row['state'], 'candidates': 1 if isinstance(result, dict) and result.get('caseId') else 0,
+            'createdAt': row.get('$createdAt', value.get('createdAt', stamp())), 'error': value.get('error')})
+    return results[-5:][::-1]
+
+
 @router.get('/{content_id}/media')
 def media(content_id: str, account=Depends(current), store=Depends(get_store)):
     row = store.owned(account['$id'], content_id, 'original')

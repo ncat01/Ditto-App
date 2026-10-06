@@ -54,6 +54,46 @@ class BackendConnection(private val context: Context) {
 class BackendApi(val endpoint: String, private val token: String?) {
     private val client=OkHttpClient.Builder().connectTimeout(15,TimeUnit.SECONDS).readTimeout(120,TimeUnit.SECONDS)
         .followRedirects(false).followSslRedirects(false).build()
+    fun supportsChunkedUpload(): Boolean = JSONObject(request("api/health")).optJSONObject("capabilities")?.optString("uploadProtocol") == "chunked-appwrite-v1"
+    suspend fun awaitResult(path: String, json: String?=null, body: RequestBody?=null): String {
+        val response=request(path,json,body)
+        val queued=runCatching { JSONObject(response) }.getOrNull()
+        val jobId=queued?.optString("jobId")?.takeIf { it.isNotBlank() } ?: return response
+        return awaitJob(jobId)
+    }
+    suspend fun awaitJob(jobId: String): String {
+        require(jobId.matches(Regex("[a-zA-Z0-9._-]{1,36}"))) { "Invalid processing receipt." }
+        repeat(160) {
+            kotlinx.coroutines.delay(1500)
+            val job=JSONObject(request("api/jobs/$jobId"))
+            when(job.getString("state")) {
+                "complete" -> return job.get("result").toString()
+                "error","unknown","cancelled" -> error(job.optString("error").ifBlank { "Processing stopped. Check its status before submitting again." })
+            }
+        }
+        error("Still processing. Job $jobId is saved; refresh later before submitting again.")
+    }
+    suspend fun uploadMedia(bytes: ByteArray, mime: String, title: String, source: String, originalId: String?=null): String {
+        require(bytes.isNotEmpty() && bytes.size<=20_000_000) { "Media must be 20 MB or smaller." }
+        val sha=java.security.MessageDigest.getInstance("SHA-256").digest(bytes).joinToString("") { "%02x".format(it) }
+        val start=JSONObject(request("api/content/uploads/start",JSONObject().put("title",title)
+            .put("content_type",mime).put("size",bytes.size).put("sha256",sha).put("source",source)
+            .put("purpose",if(originalId==null) "original" else "candidate").put("original_id",originalId ?: "").toString()))
+        val id=start.getString("id")
+        require(id.matches(Regex("[a-zA-Z0-9._-]{1,36}"))) { "Invalid upload receipt." }
+        val chunk=start.getInt("chunkBytes")
+        require(chunk==5_000_000) { "Unsupported chunk size." }
+        var offset=start.getInt("uploadedBytes")
+        while(offset<bytes.size) {
+            kotlinx.coroutines.delay(1)
+            val part=bytes.copyOfRange(offset,minOf(offset+chunk,bytes.size))
+            val receipt=JSONObject(request("api/content/uploads/$id/chunks?offset=$offset",body=part.toRequestBody("application/octet-stream".toMediaType())))
+            val next=receipt.getInt("uploadedBytes")
+            require(next==offset+part.size) { "Unexpected upload progress; check upload status." }
+            offset=next
+        }
+        return awaitResult("api/content/uploads/$id/complete","{}")
+    }
     fun download(path: String, destination: java.io.File): java.io.File {
         if(destination.isFile) return destination
         val request=Request.Builder().url(endpoint+path).apply { if(token!=null) header("Authorization","Bearer $token") }.build()
@@ -81,7 +121,7 @@ class BackendApi(val endpoint: String, private val token: String?) {
         client.newCall(request).execute().use { response ->
             val text=response.body?.string() ?: ""
             if(!response.isSuccessful) {
-                if(response.code in 300..399) error("Codespaces port is private or redirected. Set test port 8010 visibility to Public; keep Ditto sign-in enabled.")
+                if(response.code in 300..399) error("The backend redirected the request. Check the configured service address or contact support.")
                 if(response.code==401) error("Server session expired. Log out and sign in again.")
                 val detail=runCatching { JSONObject(text).optString("detail") }.getOrDefault("")
                 error(if(detail.isNotBlank() && detail.length<500) detail else "Backend request failed (${response.code}).")

@@ -43,6 +43,7 @@ class Settings(BaseSettings):
     smtp_port: int = 0
     smtp_user: str = ""
     smtp_password: str = ""
+    cloud_email_outreach_enabled: bool = False
 
     # Follow-up cadence in days; the scheduler re-evaluates open cases on this interval.
     follow_up_interval_days: int = 7

@@ -87,11 +87,18 @@ class Store:
             change['expires_at'] = stamp(expires)
         return self.client.patch(RECORDS, row['$id'], change, tx)
 
-    def consume(self, scope, maximum, seconds, *, weight=1):
+    def consume(self, scope, maximum, seconds, *, weight=1, period=None):
         if maximum < weight or weight <= 0:
             raise HTTPException(429, 'Request allowance exhausted.', headers={'Retry-After': str(seconds)})
         current = int(time.time())
         bucket = current // seconds
+        until = (bucket + 1) * seconds
+        if period is not None:
+            # Calendar-month provider allowance must not reset on a fixed epoch
+            # year boundary halfway through the month.
+            bucket, until = period
+            if until <= current:
+                raise ValueError('Expired request allowance period')
         identity = digest(scope + ':' + str(bucket))[:32]
         for attempt in range(5):
             try:
@@ -102,11 +109,11 @@ class Store:
                         if exc.status != 404:
                             raise
                         row = self.client.create(BUDGETS, identity, {
-                            'count': weight, 'expires_at': stamp(datetime.fromtimestamp((bucket + 1) * seconds, timezone.utc)),
+                            'count': weight, 'expires_at': stamp(datetime.fromtimestamp(until, timezone.utc)),
                         }, tx)
                     if row['count'] > maximum:
                         raise HTTPException(429, 'Request allowance exhausted.',
-                            headers={'Retry-After': str((bucket + 1) * seconds - current)})
+                            headers={'Retry-After': str(until - current)})
                 return
             except CloudError as exc:
                 if exc.status != 409 or attempt == 4:
@@ -121,7 +128,7 @@ class Store:
 
     def job(self, owner, job_type, args, *, parent='', tx=None, delay=None, row_id=None):
         value = {'type': job_type, 'args': args, 'attempts': 0, 'result': None,
-                 'error': None, 'notBefore': stamp(delay) if delay else None}
+                 'error': None, 'createdAt': stamp(), 'notBefore': stamp(delay) if delay else None}
         return self.create(owner, 'job', value, parent=parent, state='queued', tx=tx,
                            row_id=row_id, expires=delay or now())
 

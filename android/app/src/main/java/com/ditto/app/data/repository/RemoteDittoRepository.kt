@@ -26,8 +26,8 @@ class RemoteDittoRepository(private val context: Context, private val session: S
     val connectionError=MutableStateFlow<String?>(null)
     init { scope.launch { while(isActive) { try { refresh() } catch(e:CancellationException) { throw e } catch(e:Exception) { connectionError.value=e.message ?: "Backend unavailable" }; delay(15000) } } }
     fun close() { scope.cancel(); cases.value=emptyList();activity.value=emptyList();content.value=emptyList() }
-    override val verificationEngineName="Server rule-based verifier (no live LLM)"
-    override val discoveryProviderName="Server synthetic corpus; live platform discovery unavailable"
+    override val verificationEngineName="Review ownership and permission before acting"
+    override val discoveryProviderName="Submitted media comparison and configured web search; no platform-wide Instagram search"
     override val matcherName="Server measured five-frame pHash"
     override fun observeCases(): Flow<List<Case>> = cases
     override fun observeCase(id:String): Flow<Case?> = cases.map { rows-> rows.firstOrNull { it.id==id } }
@@ -57,13 +57,16 @@ class RemoteDittoRepository(private val context: Context, private val session: S
         val mime=context.contentResolver.getType(parsed) ?: if(isVideo) "video/mp4" else "image/jpeg"
         val bytes=context.contentResolver.openInputStream(parsed)?.use { input ->
             val out=java.io.ByteArrayOutputStream();val buffer=ByteArray(8192);var total=0
-            while(true) { val n=input.read(buffer);if(n<0) break;total+=n;require(total<=25*1024*1024) { "Uploads must be 25 MB or smaller." };out.write(buffer,0,n) }
+            while(true) { val n=input.read(buffer);if(n<0) break;total+=n;require(total<=20_000_000) { "Uploads must be 20 MB or smaller." };out.write(buffer,0,n) }
             out.toByteArray()
         } ?: error("Cannot read selected media.")
-        require(bytes.size<=25*1024*1024) { "Uploads must be 25 MB or smaller." }
-        val body=MultipartBody.Builder().setType(MultipartBody.FORM).addFormDataPart("file",if(isVideo) "original.mp4" else "original.image",bytes.toRequestBody(mime.toMediaType())).build()
-        val q=java.net.URLEncoder.encode(title,"UTF-8")+"&source="+java.net.URLEncoder.encode(source,"UTF-8")
-        val item=contentFrom(JSONObject(api.request("api/content/upload?title=$q",body=body)))
+        require(bytes.size<=20_000_000) { "Uploads must be 20 MB or smaller." }
+        val response=if(api.supportsChunkedUpload()) api.uploadMedia(bytes,mime,title,source) else {
+            val body=MultipartBody.Builder().setType(MultipartBody.FORM).addFormDataPart("file",if(isVideo) "original.mp4" else "original.image",bytes.toRequestBody(mime.toMediaType())).build()
+            val q=java.net.URLEncoder.encode(title,"UTF-8")+"&source="+java.net.URLEncoder.encode(source,"UTF-8")
+            api.request("api/content/upload?title=$q",body=body)
+        }
+        val item=contentFrom(JSONObject(response))
         refresh();content.value.firstOrNull { it.id==item.id } ?: item
     }
     override fun scan(contentId:String): Flow<DittoResult<ScanProgress>> = flow {

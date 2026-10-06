@@ -1,41 +1,30 @@
 # Commercial launch status
 
-**Not deployed. Not ready for public commercial launch.** The Android download is a debug integration build. This applies to the full advertised detection, review, outreach and follow-up product.
+**Implementation prepared; public deployment and commercial launch remain unverified.** Renaming a build or passing local tests cannot certify launch readiness.
+
+Use [the consolidated deployment guide](COMMERCIAL-DEPLOYMENT.md). It replaces repeated Console setup steps with a private runner. The earlier SQLite/Codespaces backend remains intact until a reviewed migration and cutover.
 
 ## Implemented
 
-- Account signup/login, expiring sessions, recovery, email verification, password-confirmed deletion and request limits.
-- Per-user Instagram browser authorization, encrypted tokens, refresh, disconnect and own-media import. Live sign-in on a device remains unverified.
-- Private Appwrite uploads and Instagram imports, owner-checked playback, failed-upload cleanup and durable account-deletion retries. Local copies are retained for hashing and backups.
-- Measured image/video pHash comparison and consented Google web-image search. Search links are unverified leads; these features do not search all Instagram content or determine infringement.
-- Signup tutorial using actual Ditto screenshots and an Instagram connection button.
-- Non-root Docker deployment configuration, HTTPS proxy, backup/restore scripts and release signing gates.
-- Production refuses sample scanning, sample evaluation/media, demo clock changes, simulated follow-ups and approvals without a live transport.
+- Isolated Appwrite TablesDB accounts, revocable sessions, recovery/verification, owner checks and durable deletion.
+- Private resumable 20 MB uploads, actual image/video pHash comparison, measured cases and private playback.
+- Per-user Instagram browser authorization, encrypted credentials, refresh/disconnect and authorized own-media import.
+- Optional consented Google web-image search, Gemini previews, explicitly approved SMTP outreach, idempotent receipts and reminders requiring human review. SMTP acceptance is not proof of delivery; interrupted sends are marked unknown rather than automatically resent.
+- Android integration, account tutorial with actual Ditto screenshots, Instagram connection button, evidence review and recipient confirmation.
+- Private Function staging, live transaction/session/storage probes, guarded source migration, encrypted backup/restore, owner signing key and guarded publication script.
+- Security dependency updates. Provider tests use mocks unless a report explicitly says live.
 
-## Remaining work and dependencies
+## External completion requirements
 
-| Requirement | Current state | What closes it |
-| --- | --- | --- |
-| Durable hosted backend | SQLite/FastAPI remains active. The separate [Appwrite candidate](APPWRITE-CLOUD.md) has private accounts/sessions, resumable uploads and durable workers with local tests. | Complete Instagram/case/discovery routes, Android protocol integration, existing-data migration and live Functions deployment/verification. |
-| Appwrite deployment access | The key is in Codespaces; this local session has no authenticated Appwrite management connection. The key lacks Functions deployment and schema creation scopes. | Operator-owned deployment access through a supported connection or private runner, after a deployable implementation exists. Do not paste a key in chat. |
-| Public Instagram access | Secret/redirect configuration is checked; public-user access is not verified. | Live two-account device OAuth/import tests and applicable Meta review/approval. |
-| Email delivery | Recovery/verification code exists; production SMTP is not supplied or verified. | Private SMTP configuration and real inbox tests, including expiry and session revocation. |
-| Reverse search | Provider adapter, consent and cost limits exist; Google configuration/billing is pending. | Operator-approved provider configuration and live search/quota tests. |
-| Live outreach/follow-up | No live message transport exists; production refuses dispatch. | Implement a permitted transport, delivery/audit/retry handling and end-to-end checks. |
-| Public policies | Draft pages identify Svarsha T and support email. Retention policy is missing. | Define retention/backup policy and review published documents. |
-| Android distribution | Debug APK available; private release signing gates exist. | Owner-held keystore, stable backend origin, signed APK/AAB and device/store checks. |
-| Operations | Docker/Caddy files and local backup tests exist. No production runtime is verified. | Hosted startup, monitoring, restore drill and Appwrite file retention/export checks. |
+| Requirement | Outstanding evidence |
+| --- | --- |
+| Hosting | Authenticated deployment access; successful Function builds, runtime quota and live staging probes. |
+| Instagram | Exact hosted callback, applicable Meta approval and actual public-user device authorization/import. |
+| Email | Private SMTP configuration, sender verification and real verification/recovery/outreach inbox tests. |
+| Data | Frozen-source inventory, missing-media resolution, reviewed migration and encrypted restore drill. |
+| Android | Separately backed-up keystore, stable service origin, signed release and real-device flows. |
+| Policies | Owner approval of privacy, retention and backup deletion policy. Draft pages identify Svarsha T and svarsha.t@gmail.com. |
+| Operations | Monitoring, backup schedule, restore rehearsal and Education quota review. No paid plan changes are authorized. |
+| Discovery | Hashes compare available media; they do not find every Instagram repost. Google search requires separately approved configuration. Links and similarity scores do not establish infringement. |
 
-## Hosting constraint
-
-The user's no-card requirement remains in effect. Appwrite TablesDB uses managed APIs rather than a SQLAlchemy connection. A Functions deployment needs durable request-scoped storage and asynchronous processing for slow video/provider work; copying SQLite into a Function is not a valid migration. Synchronous Functions have a 30-second limit: https://appwrite.io/docs/products/functions/execute .
-
-Appwrite native PostgreSQL could preserve more of the existing ORM, but its documented setup requires a paid plan and payment method and starts at $10/month. Do not activate it under the current authorization: https://appwrite.io/docs/products/databases/postgresql .
-
-## One development update
-
-Use the batch in [DEPLOYMENT.md](DEPLOYMENT.md) to verify the updated Codespaces backend. This does not deploy a commercial service. Project creation, storage checks, passing tests and renaming the app do not close the requirements above.
-
-## Signing
-
-Set DITTO_SIGNING_STORE_FILE, DITTO_SIGNING_STORE_PASSWORD, DITTO_SIGNING_KEY_ALIAS and DITTO_SIGNING_KEY_PASSWORD privately. Build with `-PdittoApiBaseUrl=https://your-production-host/`. Debug signing is never a release fallback. The development docker-compose.yml enables demo mode and must not be used as the public deployment.
+The launch script requires actual operator evidence. Broad automatic Instagram discovery, face recognition and ASR are not delivered features.

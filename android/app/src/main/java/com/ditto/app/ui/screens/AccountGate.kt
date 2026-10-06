@@ -37,7 +37,7 @@ fun AccountGate() {
     val scope = rememberCoroutineScope()
     if (!onboarded) {
         val titles = listOf("Your work. Your credit.","Evidence before action.","You stay in control.")
-        val bodies = listOf("Protect originals and discover potential reposts in a reproducible offline demo.","Compare similarity, attribution and permission separately. Simulated manipulation evidence is always labelled.","Ditto proposes, you approve. Sandbox outreach records an action without sending it to a real platform.")
+        val bodies = listOf("Keep a private record of your original work. Connect Instagram to import your own videos.","Compare originals with suspected copies. Similarity helps you review evidence; it does not establish ownership or infringement.","Review every candidate and message before approving an action. Available services depend on your account and deployment.")
         Column(Modifier.fillMaxSize().background(DittoColors.Background).safeDrawingPadding().padding(28.dp),verticalArrangement=Arrangement.Center) {
             com.ditto.app.ui.components.DittoMark(size=88)
             Spacer(Modifier.height(24.dp))
@@ -53,7 +53,7 @@ fun AccountGate() {
             Text("Made by you. Credited to you.",style=com.ditto.app.ui.theme.HandwritingStyle,color=DittoColors.SecondaryBlue)
             Spacer(Modifier.height(16.dp))
             Text(if(signup) "Create your account" else "Welcome back",style=MaterialTheme.typography.headlineMedium)
-            Spacer(Modifier.height(12.dp)); Text(if(connected) "Cloud account • Your account and uploaded media are stored on this backend. Discovery remains synthetic and actions are sandboxed." else "Offline demo • Accounts and media stay on this device.",style=MaterialTheme.typography.bodySmall)
+            Spacer(Modifier.height(12.dp)); Text(if(connected) "Your originals and account are stored privately on the connected service. A setup guide appears after sign-in." else "Offline demo • Accounts and media stay on this device.",style=MaterialTheme.typography.bodySmall)
             if(com.ditto.app.BuildConfig.DEBUG) Row {
                 TextButton(enabled=!busy,onClick={ connected=false; connection.configure(false,endpoint);error=null }) { Text(if(!connected) "✓ Offline demo" else "Offline demo") }
                 TextButton(enabled=!busy,onClick={ connected=true;error=null }) { Text(if(connected) "✓ Cloud account" else "Cloud account") }
@@ -104,7 +104,7 @@ fun AccountGate() {
                 withContext(Dispatchers.IO) {
                     val repository=ServiceLocator.repository(context)
                     if(repository is com.ditto.app.data.repository.RemoteDittoRepository) {
-                        runCatching { repository.refresh() }.onFailure { repository.connectionError.value="Backend unavailable. Resume Codespace and check test port visibility." }
+                        runCatching { repository.refresh() }.onFailure { repository.connectionError.value="Service unavailable. Check your connection and try refreshing." }
                     } else { repository.seedDemoData(false);com.ditto.app.core.FollowUpWorker.schedule(context,user!!);com.ditto.app.core.FollowUpWorker.checkDue(context,user!!) }
                 }
                 ready=true

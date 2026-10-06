@@ -140,7 +140,7 @@ data class CandidateMatch(
 ) {
     /** Blended similarity shown as the headline "% similarity" figure. */
     val overallSimilarity: Double
-        get() = (hashSimilarity * 0.45) + (visualSimilarity * 0.40) + (captionSimilarity * 0.15)
+        get() = if(platform == "Submitted evidence") hashSimilarity else (hashSimilarity * 0.45) + (visualSimilarity * 0.40) + (captionSimilarity * 0.15)
 }
 
 data class VerificationResult(

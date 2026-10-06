@@ -10,7 +10,12 @@ from app.config import get_settings
 class SearchUnavailable(RuntimeError): pass
 
 def query_images(path,kind):
-    images=[]
+    encoded=[]
+    def append(image):
+        image.thumbnail((1280,1280))
+        buffer=io.BytesIO()
+        image.convert('RGB').save(buffer,format='JPEG',quality=85)
+        encoded.append(base64.b64encode(buffer.getvalue()).decode())
     if kind=='video':
         capture=cv2.VideoCapture(str(path))
         try:
@@ -20,16 +25,12 @@ def query_images(path,kind):
                 capture.set(cv2.CAP_PROP_POS_FRAMES,int(max(count-1,0)*i/4))
                 ok,frame=capture.read()
                 if not ok:raise ValueError('Video frame cannot be decoded')
-                images.append(Image.fromarray(cv2.cvtColor(frame,cv2.COLOR_BGR2RGB)))
+                append(Image.fromarray(cv2.cvtColor(frame,cv2.COLOR_BGR2RGB)))
         finally:capture.release()
     else:
         with Image.open(path) as source:
             if source.width*source.height>40000000:raise ValueError('Image is too large')
-            images.append(ImageOps.exif_transpose(source).convert('RGB'))
-    encoded=[]
-    for image in images:
-        image.thumbnail((1280,1280));buffer=io.BytesIO();image.convert('RGB').save(buffer,format='JPEG',quality=85)
-        encoded.append(base64.b64encode(buffer.getvalue()).decode())
+            append(ImageOps.exif_transpose(source).convert('RGB'))
     return encoded
 
 def safe_url(value):

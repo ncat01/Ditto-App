@@ -55,21 +55,29 @@ private fun ServerVideoComparison(case: Case) {
     val context=LocalContext.current
     var clips by remember(case.id) { mutableStateOf<Pair<String,String>?>(null) }
     var error by remember(case.id) { mutableStateOf<String?>(null) }
+    var isImage by remember(case.id) { mutableStateOf(false) }
     LaunchedEffect(case.id) {
         try { clips=kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
             val session=com.ditto.app.core.BackendConnection(context).session() ?: error("Sign in again to view private media.")
             val api=com.ditto.app.core.BackendApi(session.endpoint,session.token)
+            isImage=org.json.JSONObject(api.request("api/cases/${case.id}")).getJSONObject("candidate").optString("mediaKind")=="image"
             val scope=java.security.MessageDigest.getInstance("SHA-256").digest((session.endpoint+session.userId).toByteArray()).joinToString("") { "%02x".format(it) }
-            val original=api.download("api/content/${case.contentId}/media",java.io.File(context.cacheDir,"server-media/$scope/${case.id}-original.mp4"))
-            val candidate=api.download("api/cases/${case.id}/candidate-media",java.io.File(context.cacheDir,"server-media/$scope/${case.id}-candidate.mp4"))
+            val extension=if(isImage) "image" else "mp4"
+            val original=api.download("api/content/${case.contentId}/media",java.io.File(context.cacheDir,"server-media/$scope/${case.id}-original.$extension"))
+            val candidate=api.download("api/cases/${case.id}/candidate-media",java.io.File(context.cacheDir,"server-media/$scope/${case.id}-candidate.$extension"))
             Uri.fromFile(original).toString() to Uri.fromFile(candidate).toString()
         } } catch(e:kotlinx.coroutines.CancellationException) { throw e } catch(e:Exception) { error=e.message ?: "Server media unavailable." }
     }
     clips?.let { (original,candidate) ->
         Row(horizontalArrangement=Arrangement.spacedBy(10.dp)) {
-            VideoPreview(original,"Server original",Modifier.weight(1f))
-            VideoPreview(candidate,"Server candidate • demo",Modifier.weight(1f))
+            if(isImage) {
+                coil.compose.AsyncImage(model=original,contentDescription="Private original",modifier=Modifier.weight(1f).height(180.dp))
+                coil.compose.AsyncImage(model=candidate,contentDescription="Submitted candidate",modifier=Modifier.weight(1f).height(180.dp))
+            } else {
+                VideoPreview(original,"Original",Modifier.weight(1f))
+                VideoPreview(candidate,if(case.candidate.platform == "Submitted evidence") "Submitted candidate" else "Candidate • demonstration",Modifier.weight(1f))
+            }
         }
     } ?: Text(error ?: "Loading private server videos…",style=MaterialTheme.typography.bodySmall)
-    Text("Authenticated server assets. Attribution: ${if(case.candidate.attributionPresent) "credit present" else "unknown or absent in demo metadata"}. Permission: ${if(case.candidate.permissionGranted) "authorized in demo registry" else "unknown"}. Discovery is synthetic; no live manipulation detector or extracted transcripts.",style=MaterialTheme.typography.bodySmall)
+    Text(if(case.candidate.platform == "Submitted evidence") "Private submitted media. Review attribution, ownership and permission yourself. Similarity does not establish infringement." else "Demonstration evidence. Attribution and permission are sample metadata; no live manipulation detector or extracted transcripts.",style=MaterialTheme.typography.bodySmall)
 }

@@ -121,7 +121,7 @@ fun ScanScreen(onOpenCase: (String) -> Unit) {
             androidx.compose.material3.OutlinedTextField(value=uploadTitle,onValueChange={uploadTitle=it.take(120)},label={Text("Title for your upload")},singleLine=true,modifier=Modifier.fillMaxWidth())
         }
         item {
-            androidx.compose.material3.OutlinedTextField(value=uploadSource,onValueChange={uploadSource=it.take(256)},label={Text("Source metadata (platform or URL)")},singleLine=true,modifier=Modifier.fillMaxWidth())
+            androidx.compose.material3.OutlinedTextField(value=uploadSource,onValueChange={uploadSource=it.take(64)},label={Text("Source label")},singleLine=true,modifier=Modifier.fillMaxWidth())
         }
         // --- upload / selection ---
         if (state.selectedContent == null) {
@@ -181,7 +181,7 @@ fun ScanScreen(onOpenCase: (String) -> Unit) {
         }
 
         // --- scan action / progress ---
-        if (com.ditto.app.BuildConfig.DEBUG && state.selectedContent != null && state.stage == ScanStage.IDLE) {
+        if (com.ditto.app.BuildConfig.DEBUG && !com.ditto.app.core.BackendConnection(context).enabled() && state.selectedContent != null && state.stage == ScanStage.IDLE) {
             item {
                 PrimaryButton(
                     text = "Run sample scan",
@@ -255,7 +255,7 @@ private fun ServerScanHistory(id: String, scanning: Boolean) {
                 val rows=org.json.JSONArray(com.ditto.app.core.BackendApi(session.endpoint,session.token).request("api/content/$id/scans"))
                 if(rows.length()==0) listOf("No server scan has run for this original yet.")
                 else (0 until minOf(5,rows.length())).map { i-> val j=rows.getJSONObject(i);"${j.getString("stage")} • ${j.getInt("candidates")} candidates • ${j.getString("createdAt")}" }
-            } catch(e:kotlinx.coroutines.CancellationException) { throw e } catch(e:Exception) { listOf("Server scan history unavailable. Resume your Codespace.") }
+            } catch(e:kotlinx.coroutines.CancellationException) { throw e } catch(e:Exception) { listOf("Processing history unavailable. Check your connection and refresh.") }
         }
     }
     (lines ?: listOf("Loading server scan history…")).forEach { Text(it,style=MaterialTheme.typography.bodySmall) }

@@ -36,6 +36,58 @@ private fun connectedApi(context: android.content.Context): BackendApi {
 }
 
 @Composable
+fun EmailOutreachCard(caseId: String, body: String) {
+    val context=LocalContext.current
+    val scope=rememberCoroutineScope()
+    var configured by remember(caseId) { mutableStateOf(false) }
+    var recipient by remember(caseId) { mutableStateOf("") }
+    var reviewed by remember(caseId) { mutableStateOf(false) }
+    var reminder by remember(caseId) { mutableStateOf(false) }
+    var busy by remember(caseId) { mutableStateOf(false) }
+    var confirm by remember(caseId) { mutableStateOf(false) }
+    var message by remember(caseId) { mutableStateOf<String?>(null) }
+    val requestId=remember(caseId,body,recipient) { java.util.UUID.randomUUID().toString().replace("-","") }
+    LaunchedEffect(caseId) {
+        try { configured=withContext(Dispatchers.IO) { JSONObject(connectedApi(context).request("api/discovery/status")).optBoolean("outreach") } }
+        catch(e:CancellationException) { throw e }
+        catch(e:Exception) { configured=false }
+    }
+    if(!configured) {
+        Text("Email outreach is currently unavailable. You can review evidence and edit your draft.",style=MaterialTheme.typography.bodySmall)
+        return
+    }
+    Text("Email a reviewed request",style=MaterialTheme.typography.titleSmall)
+    OutlinedTextField(recipient,{recipient=it.take(254)},label={Text("Confirmed recipient email")},singleLine=true,enabled=!busy,modifier=Modifier.fillMaxWidth())
+    Row { Checkbox(reviewed,{reviewed=it},enabled=!busy); Text("I checked ownership, permission and the recipient.",style=MaterialTheme.typography.bodySmall) }
+    Row { Checkbox(reminder,{reminder=it},enabled=!busy); Text("Remind me to review this in 7 days. No automatic follow-up email.",style=MaterialTheme.typography.bodySmall) }
+    SecondaryButton(text=if(busy) "Checking delivery status" else "Review and send email",
+        enabled=!busy && reviewed && body.isNotBlank() && recipient.matches(Regex("[^\\s@]+@[^\\s@]+\\.[^\\s@]+")),
+        modifier=Modifier.fillMaxWidth(),onClick={confirm=true})
+    message?.let { Text(it,style=MaterialTheme.typography.bodySmall) }
+    if(confirm) AlertDialog(onDismissRequest={confirm=false},title={Text("Send to $recipient?")},
+        text={ Column { Text(body.take(4000)); Text("This sends a real email. Your verified account email is used for replies.",style=MaterialTheme.typography.bodySmall) } },
+        dismissButton={TextButton(onClick={confirm=false}) {Text("Cancel")}},
+        confirmButton={TextButton(onClick={
+            confirm=false;busy=true
+            scope.launch {
+                try {
+                    withContext(Dispatchers.IO) {
+                        val api=connectedApi(context)
+                        val receipt=JSONObject(api.request("api/cases/$caseId/approve",JSONObject()
+                            .put("recipient",recipient).put("editedBody",body).put("requestId",requestId)
+                            .put("evidenceReviewed",reviewed).put("recipientConfirmed",true).put("reminderDays",if(reminder) 7 else 0).toString()))
+                        api.awaitJob(receipt.getString("dispatchJob"))
+                        (ServiceLocator.repository(context) as? RemoteDittoRepository)?.refresh()
+                    }
+                    message="Email accepted by the mail service. Delivery and a response are not yet confirmed."
+                } catch(e:CancellationException) {throw e}
+                catch(e:Exception) {message=e.message ?: "Delivery not confirmed. Check status before sending again."}
+                finally {busy=false}
+            }
+        }) {Text("Send approved email")}})
+}
+
+@Composable
 fun InstagramConnectionCard() {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
@@ -134,7 +186,7 @@ fun InstagramImportCard(onImported: () -> Unit) {
         scope.launch {
             try {
                 posts=withContext(Dispatchers.IO) {
-                    val rows=JSONArray(connectedApi(context).request("api/integrations/instagram/posts"))
+                    val rows=JSONArray(connectedApi(context).awaitResult("api/integrations/instagram/posts"))
                     (0 until rows.length()).map { rows.getJSONObject(it) }
                 }
                 if(posts.isEmpty()) message="No posts in your linked Instagram account yet."
@@ -144,7 +196,7 @@ fun InstagramImportCard(onImported: () -> Unit) {
     }
     DittoCard {
         Text("Your Instagram originals",style=MaterialTheme.typography.titleMedium)
-        Text("Import a video or Reel from your linked Creator account (up to 25 MB).",style=MaterialTheme.typography.bodySmall)
+        Text("Import a video or Reel from your linked Creator account (up to 20 MB).",style=MaterialTheme.typography.bodySmall)
         Spacer(Modifier.height(8.dp))
         SecondaryButton(text=if(busy) "Working…" else "Load Instagram posts",onClick={load()},enabled=!busy,modifier=Modifier.fillMaxWidth())
         message?.let { Text(it,style=MaterialTheme.typography.bodySmall) }
@@ -156,7 +208,7 @@ fun InstagramImportCard(onImported: () -> Unit) {
                     busy=true;message=null
                     scope.launch {
                         try {
-                            withContext(Dispatchers.IO) { connectedApi(context).request("api/integrations/instagram/import/${post.getString("id")}","{}") }
+                            withContext(Dispatchers.IO) { connectedApi(context).awaitResult("api/integrations/instagram/import/${post.getString("id")}","{}") }
                             message="Video imported. It is now in your library."
                             withContext(Dispatchers.IO) { (ServiceLocator.repository(context) as? RemoteDittoRepository)?.refresh() }
                             onImported()
@@ -182,7 +234,7 @@ fun GeminiDraftButton(caseId: String, enabled: Boolean, onSave: (String) -> Unit
     if(confirm) AlertDialog(onDismissRequest={confirm=false},title={Text("Draft with Gemini?")},text={Text("The title, recipient and current draft will be sent to Google. Free-tier inputs may be used to improve its products. You will review the result before saving. No video is sent.")},confirmButton={TextButton(onClick={
         confirm=false;busy=true;error=null
         scope.launch {
-            try {draft=withContext(Dispatchers.IO) { JSONObject(connectedApi(context).request("api/cases/$caseId/ai-draft","{}")).getString("body") }}
+            try {draft=withContext(Dispatchers.IO) { JSONObject(connectedApi(context).awaitResult("api/cases/$caseId/ai-draft","{\"consent_to_google\":true}")).getString("body") }}
             catch(e:Exception) {error=e.message ?: "Gemini unavailable."}
             finally {busy=false}
         }
@@ -258,13 +310,15 @@ fun ContentDiscoveryCard(contentId: String) {
                         val data=context.contentResolver.openInputStream(uri)?.use { input ->
                             val output=java.io.ByteArrayOutputStream()
                             val buffer=ByteArray(8192)
-                            while(true) {val size=input.read(buffer);if(size<0)break;require(output.size()+size<=25*1024*1024) {"Candidate exceeds 25 MB."};output.write(buffer,0,size)}
+                            while(true) {val size=input.read(buffer);if(size<0)break;require(output.size()+size<=20_000_000) {"Candidate exceeds 20 MB."};output.write(buffer,0,size)}
                             output.toByteArray()
                         } ?: error("Cannot read candidate.")
                         val mime=context.contentResolver.getType(uri) ?: "application/octet-stream"
                         val body=MultipartBody.Builder().setType(MultipartBody.FORM)
                             .addFormDataPart("file","candidate",data.toRequestBody(mime.toMediaType())).build()
-                        JSONObject(connectedApi(context).request("api/discovery/$contentId/compare",body=body))
+                        val api=connectedApi(context)
+                        JSONObject(if(api.supportsChunkedUpload()) api.uploadMedia(data,mime,"Submitted comparison","Submitted evidence",contentId)
+                            else api.request("api/discovery/$contentId/compare",body=body))
                     }
                     message="Measured similarity: ${(result.getDouble("similarity")*100).toInt()}%. ${result.getString("algorithm")}. ${result.getString("notice") }"
                 } catch(e:CancellationException) {throw e}
@@ -297,7 +351,7 @@ fun ContentDiscoveryCard(contentId: String) {
             confirmSearch=false;busy=true;message=null;results=emptyList()
             scope.launch {
                 try {
-                    val result=withContext(Dispatchers.IO) {JSONObject(connectedApi(context).request("api/discovery/$contentId/web-search","{\"consent_to_google\":true}"))}
+                    val result=withContext(Dispatchers.IO) {JSONObject(connectedApi(context).awaitResult("api/discovery/$contentId/web-search","{\"consent_to_google\":true}"))}
                     val rows=result.getJSONArray("results")
                     results=(0 until rows.length()).map {rows.getJSONObject(it)}
                     message=if(results.isEmpty()) "No web leads returned. This does not establish that no reposts exist." else result.getString("notice")

@@ -229,7 +229,8 @@ fun CaseDetailScreen(caseId: String, onBack: () -> Unit) {
                 Spacer(Modifier.height(12.dp))
                 MetricBar("Hash similarity", c.candidate.hashSimilarity)
                 Spacer(Modifier.height(12.dp))
-                MetricBar("Caption similarity", c.candidate.captionSimilarity)
+                if(c.candidate.platform != "Submitted evidence") MetricBar("Caption similarity", c.candidate.captionSimilarity)
+                else Text("Caption, account identity and permission have not been verified.",style=MaterialTheme.typography.bodySmall)
                 c.verification?.let {
                     Spacer(Modifier.height(12.dp))
                     MetricBar(
@@ -254,14 +255,14 @@ fun CaseDetailScreen(caseId: String, onBack: () -> Unit) {
                         Spacer(Modifier.height(10.dp))
                         MetaRow("Platform", c.candidate.platform)
                         MetaRow("Account", "${c.candidate.accountName} ${c.candidate.accountHandle}")
-                        MetaRow("Followers", formatFollowers(c.candidate.followerCount))
+                        MetaRow("Followers", if(c.candidate.platform == "Submitted evidence") "Unknown" else formatFollowers(c.candidate.followerCount))
                         MetaRow(
                             "Monetization",
-                            if (c.candidate.monetized) "Indicators present" else "None detected"
+                            if(c.candidate.platform == "Submitted evidence") "Unknown" else if (c.candidate.monetized) "Indicators present" else "None detected"
                         )
                         MetaRow("Source", c.candidate.sourceUrl)
                         MetaRow("Caption", c.candidate.caption)
-                        MetaRow("Detected post", relativeTime(c.candidate.postedAt))
+                        MetaRow("Detected post", if(c.candidate.platform == "Submitted evidence") "Posting date unknown" else relativeTime(c.candidate.postedAt))
                         MetaRow("Original content", c.contentTitle)
                         MetaRow("Discovered", relativeTime(c.candidate.discoveredAt))
                     }
@@ -415,14 +416,17 @@ fun CaseDetailScreen(caseId: String, onBack: () -> Unit) {
                             Spacer(Modifier.height(16.dp))
                             if(com.ditto.app.core.BackendConnection(androidx.compose.ui.platform.LocalContext.current).enabled()) {
                                 GeminiDraftButton(caseId, !ui.busy) { body -> vm.saveDraft(body, c.plan.tone) }
+                                EmailOutreachCard(caseId, c.plan.draftBody)
                                 Spacer(Modifier.height(10.dp))
                             }
+                            if(!com.ditto.app.core.BackendConnection(androidx.compose.ui.platform.LocalContext.current).enabled()) {
                             PrimaryButton(
                                 text = "Approve action",
                                 onClick = { showApproval = true },
                                 enabled = !ui.busy,
                                 modifier = Modifier.fillMaxWidth()
                             )
+                            }
                             Spacer(Modifier.height(10.dp))
                             Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
                                 SecondaryButton(

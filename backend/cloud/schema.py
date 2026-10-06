@@ -21,6 +21,7 @@ TABLES = [
     ], 'indexes': [
         {'key': 'owner_kind', 'type': 'key', 'columns': ['owner_id', 'kind'], 'orders': ['ASC', 'ASC']},
         {'key': 'owner_kind_state', 'type': 'key', 'columns': ['owner_id', 'kind', 'state'], 'orders': ['ASC'] * 3},
+        {'key': 'owner_kind_parent', 'type': 'key', 'columns': ['owner_id', 'kind', 'parent_id'], 'orders': ['ASC'] * 3},
         {'key': 'job_due', 'type': 'key', 'columns': ['kind', 'state', 'expires_at'], 'orders': ['ASC'] * 3},
     ]},
     {'tableId': BUDGETS, 'name': 'Ditto private request budgets v2', 'columns': [

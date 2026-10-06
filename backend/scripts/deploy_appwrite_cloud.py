@@ -21,6 +21,7 @@ from cloud.store import encode, stamp
 from scripts.package_appwrite_cloud import package
 
 ROOT = Path(__file__).resolve().parents[2]
+RUNTIME = 'python-3.12'
 REPORT = ROOT / '.ditto-data/cloud-deployment.json'
 RUNTIME_SCOPES = ['databases.read', 'tables.read', 'rows.read', 'rows.write', 'files.read', 'files.write', 'executions.write']
 MANAGEMENT_SCOPES = ['databases.read', 'tables.read', 'tables.write', 'columns.read', 'columns.write', 'indexes.read',
@@ -144,6 +145,19 @@ def definition(identity):
             'commands': 'pip install --no-cache-dir pip==26.2.1 -r requirements.txt', 'scopes': RUNTIME_SCOPES}
 
 
+def select_media_runtime(client):
+    global RUNTIME
+    available = client.request('GET', '/functions/runtimes').get('runtimes', [])
+    ids = {item.get('$id', item.get('key', item.get('id'))) for item in available}
+    for candidate in ('python-ml-3.12', 'python-ml-3.11'):
+        if candidate in ids:
+            RUNTIME = candidate
+            print('Selected available media runtime: ' + RUNTIME, flush=True)
+            return
+    print('No supported Python ML runtime returned by this project; staging stopped before another native compilation.', flush=True)
+    raise ValueError('Compatible media runtime unavailable')
+
+
 def generated_origin(client):
     rules = client.request('GET', '/proxy/rules', params=[('queries[]', query('equal', 'deploymentResourceId', ['ditto-api']))]).get('rules', [])
     import re
@@ -161,13 +175,13 @@ def function(client, identity):
         # Never disable/replace an already published service while staging.
         if current.get('enabled') or current.get('execute') or current.get('schedule'):
             raise ValueError('Function is already enabled; use a reviewed rolling deployment')
-        if current.get('runtime') != 'python-3.12' or current.get('name') != value['name']:
+        if current.get('runtime') not in ('python-3.12', 'python-ml-3.12', 'python-ml-3.11') or current.get('name') != value['name']:
             raise ValueError('Existing Function runtime differs')
-        client.request('PUT', '/functions/' + identity, json=value)
+        client.request('PUT', '/functions/' + identity, json={**value, 'runtime': RUNTIME})
     except CloudError as exc:
         if exc.status != 404:
             raise
-        client.request('POST', '/functions', json={'functionId': identity, 'runtime': 'python-3.12', **value})
+        client.request('POST', '/functions', json={'functionId': identity, 'runtime': RUNTIME, **value})
     existing = client.request('GET', '/functions/' + identity + '/variables').get('variables', [])
     variables = {item['key']: item['$id'] for item in existing}
     forbidden = {'APPWRITE_API_KEY', 'APPWRITE_DEPLOY_KEY', 'APPWRITE_SETUP_KEY', 'META_ACCESS_TOKEN'}
@@ -322,6 +336,7 @@ def main():
             private_storage(client)
             print('Deployment step: prepare isolated database schema', flush=True)
             schema(client)
+            select_media_runtime(client)
             archive = ROOT / 'output/ditto-appwrite-candidate.tar.gz'
             report['bundle'] = package(archive)
             report['deployments'] = {}

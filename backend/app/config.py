@@ -13,6 +13,9 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
 class Settings(BaseSettings):
+    appwrite_endpoint: str = "https://sgp.cloud.appwrite.io/v1"
+    appwrite_project_id: str = "6ac46d45002b91afdd73"
+    appwrite_api_key: SecretStr = SecretStr("")
     model_config = SettingsConfigDict(env_file=".env", extra="ignore", populate_by_name=True)
 
     database_url: str = Field(default="sqlite:///./ditto.db", validation_alias=AliasChoices("DITTO_DATABASE_URL", "database_url"))

@@ -1,0 +1,81 @@
+# Prepared deployment; do not launch until the documented release blockers are resolved.
+services:
+  backend:
+    build:
+      context: .
+      dockerfile: backend/Dockerfile
+    environment: &runtime_environment
+      DITTO_DATABASE_URL: sqlite:////data/ditto.db
+      DITTO_MEDIA_ROOT: /data/media
+      DITTO_DEMO_MODE: "false"
+      DITTO_TRUSTED_PROXY_IPS: 172.29.0.2
+      PUBLIC_BASE_URL: https://${DITTO_DOMAIN:?Set DITTO_DOMAIN}
+      INSTAGRAM_APP_ID: ${INSTAGRAM_APP_ID:?Set INSTAGRAM_APP_ID}
+      INSTAGRAM_APP_SECRET: ${INSTAGRAM_APP_SECRET:?Set INSTAGRAM_APP_SECRET}
+      TOKEN_ENCRYPTION_KEY: ${TOKEN_ENCRYPTION_KEY:?Set TOKEN_ENCRYPTION_KEY}
+      SUPPORT_EMAIL: ${SUPPORT_EMAIL:?Set SUPPORT_EMAIL}
+      OPERATOR_NAME: ${OPERATOR_NAME:?Set OPERATOR_NAME}
+      SMTP_HOST: ${SMTP_HOST:?Set SMTP_HOST}
+      SMTP_PORT: ${SMTP_PORT:-587}
+      SMTP_FROM: ${SMTP_FROM:?Set SMTP_FROM}
+      SMTP_USER: ${SMTP_USER:?Set SMTP_USER}
+      SMTP_PASSWORD: ${SMTP_PASSWORD:?Set SMTP_PASSWORD}
+      GEMINI_API_KEY: ${GEMINI_API_KEY:-}
+      GOOGLE_CLOUD_API_KEY: ${GOOGLE_CLOUD_API_KEY:-}
+      VISION_MONTHLY_UNIT_LIMIT: ${VISION_MONTHLY_UNIT_LIMIT:-1000}
+      DITTO_MEDIA_STORAGE: ${DITTO_MEDIA_STORAGE:-appwrite}
+      APPWRITE_ENDPOINT: https://sgp.cloud.appwrite.io/v1
+      APPWRITE_PROJECT_ID: 6ac46d45002b91afdd73
+      APPWRITE_API_KEY: ${APPWRITE_API_KEY:?Set APPWRITE_API_KEY}
+    volumes: &runtime_volumes
+      - ditto-production-data:/data
+    networks:
+      edge: {ipv4_address: 172.29.0.3}
+    expose: ["8010"]
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8010/api/health',timeout=5)"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+    logging:
+      driver: json-file
+      options: {max-size: "10m", max-file: "3"}
+  maintenance:
+    build:
+      context: .
+      dockerfile: backend/Dockerfile
+    environment: *runtime_environment
+    volumes: *runtime_volumes
+    command: ["python", "scripts/maintenance.py"]
+    networks:
+      edge: {ipv4_address: 172.29.0.4}
+    depends_on:
+      backend: {condition: service_healthy}
+    restart: unless-stopped
+    logging:
+      driver: json-file
+      options: {max-size: "10m", max-file: "3"}
+  proxy:
+    image: caddy:2-alpine
+    environment:
+      DITTO_DOMAIN: ${DITTO_DOMAIN:?Set DITTO_DOMAIN}
+    networks:
+      edge: {ipv4_address: 172.29.0.2}
+    ports: ["80:80", "443:443"]
+    volumes:
+      - ./Caddyfile.production:/etc/caddy/Caddyfile:ro
+      - ditto-caddy-data:/data
+      - ditto-caddy-config:/config
+    depends_on:
+      backend: {condition: service_healthy}
+    restart: unless-stopped
+volumes:
+  ditto-production-data:
+  ditto-caddy-data:
+  ditto-caddy-config:
+
+networks:
+  edge:
+    ipam:
+      config: [{subnet: 172.29.0.0/24}]

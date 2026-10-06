@@ -23,6 +23,12 @@ import androidx.lifecycle.LifecycleEventObserver
 import androidx.lifecycle.compose.LocalLifecycleOwner
 import org.json.JSONArray
 import org.json.JSONObject
+import okhttp3.MultipartBody
+import okhttp3.RequestBody.Companion.toRequestBody
+import okhttp3.MediaType.Companion.toMediaType
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.PickVisualMediaRequest
+import androidx.activity.result.contract.ActivityResultContracts
 
 private fun connectedApi(context: android.content.Context): BackendApi {
     val session=BackendConnection(context).session() ?: error("Sign into your Ditto cloud account first.")
@@ -187,4 +193,117 @@ fun GeminiDraftButton(caseId: String, enabled: Boolean, onSave: (String) -> Unit
                 OutlinedTextField(value=preview,onValueChange={draft=it.take(4000)},label={Text("Message")},modifier=Modifier.fillMaxWidth().heightIn(max=300.dp)) }
         },confirmButton={TextButton(enabled=enabled && preview.isNotBlank(),onClick={onSave(preview);draft=null}) {Text("Save draft")}},dismissButton={TextButton(onClick={draft=null}) {Text("Discard")}})
     }
+}
+
+
+@Composable
+fun AccountSecurityCard() {
+    val context=LocalContext.current
+    val scope=rememberCoroutineScope()
+    var busy by remember {mutableStateOf(false)}
+    var verified by remember {mutableStateOf(false)}
+    var message by remember {mutableStateOf<String?>(null)}
+    fun check() {
+        scope.launch {
+            try {verified=withContext(Dispatchers.IO) {JSONObject(connectedApi(context).request("api/auth/me")).optBoolean("emailVerified")}}
+            catch(e:CancellationException) {throw e}
+            catch(e:Exception) {message=e.message}
+        }
+    }
+    LaunchedEffect(Unit) {check()}
+    DittoCard {
+        Text("Account security",style=MaterialTheme.typography.titleMedium)
+        Text(if(verified) "Email verified" else "Verify your email to confirm this account belongs to you.",style=MaterialTheme.typography.bodySmall)
+        if(!verified) SecondaryButton(text="Send verification email",enabled=!busy,onClick={
+            busy=true
+            scope.launch {
+                try {withContext(Dispatchers.IO) {connectedApi(context).request("api/auth/request-verification","{}")};message="Open the verification link in your email, then refresh here."}
+                catch(e:CancellationException) {throw e}
+                catch(e:Exception) {message=e.message ?: "Email unavailable."}
+                finally {busy=false}
+            }
+        },modifier=Modifier.fillMaxWidth())
+        TextButton(enabled=!busy,onClick={check()}) {Text("Refresh verification")}
+        val endpoint=BackendConnection(context).endpoint()
+        Row {
+            TextButton(onClick={context.startActivity(Intent(Intent.ACTION_VIEW,Uri.parse(endpoint+"privacy")))}) {Text("Privacy")}
+            TextButton(onClick={context.startActivity(Intent(Intent.ACTION_VIEW,Uri.parse(endpoint+"terms")))}) {Text("Terms")}
+            TextButton(onClick={context.startActivity(Intent(Intent.ACTION_VIEW,Uri.parse(endpoint+"account/delete")))}) {Text("Delete account")}
+        }
+        message?.let {Text(it,style=MaterialTheme.typography.bodySmall)}
+    }
+}
+
+
+@Composable
+fun ContentDiscoveryCard(contentId: String) {
+    val context=LocalContext.current
+    val scope=rememberCoroutineScope()
+    var busy by remember {mutableStateOf(false)}
+    var message by remember {mutableStateOf<String?>(null)}
+    var results by remember {mutableStateOf<List<JSONObject>>(emptyList())}
+    var confirmSearch by remember {mutableStateOf(false)}
+    var configured by remember {mutableStateOf(false)}
+    LaunchedEffect(contentId) {
+        try {configured=withContext(Dispatchers.IO) {JSONObject(connectedApi(context).request("api/discovery/status")).optBoolean("configured")}}
+        catch(e:CancellationException) {throw e}
+        catch(e:Exception) {message=e.message}
+    }
+    val picker=rememberLauncherForActivityResult(ActivityResultContracts.PickVisualMedia()) { uri ->
+        if(uri!=null) {
+            busy=true;message=null
+            scope.launch {
+                try {
+                    val result=withContext(Dispatchers.IO) {
+                        val data=context.contentResolver.openInputStream(uri)?.use { input ->
+                            val output=java.io.ByteArrayOutputStream()
+                            val buffer=ByteArray(8192)
+                            while(true) {val size=input.read(buffer);if(size<0)break;require(output.size()+size<=25*1024*1024) {"Candidate exceeds 25 MB."};output.write(buffer,0,size)}
+                            output.toByteArray()
+                        } ?: error("Cannot read candidate.")
+                        val mime=context.contentResolver.getType(uri) ?: "application/octet-stream"
+                        val body=MultipartBody.Builder().setType(MultipartBody.FORM)
+                            .addFormDataPart("file","candidate",data.toRequestBody(mime.toMediaType())).build()
+                        JSONObject(connectedApi(context).request("api/discovery/$contentId/compare",body=body))
+                    }
+                    message="Measured similarity: ${(result.getDouble("similarity")*100).toInt()}%. ${result.getString("algorithm")}. ${result.getString("notice") }"
+                } catch(e:CancellationException) {throw e}
+                catch(e:Exception) {message=e.message ?: "Comparison unavailable."}
+                finally {busy=false}
+            }
+        }
+    }
+    DittoCard {
+        Text("Find and compare reposts",style=MaterialTheme.typography.titleMedium)
+        Text("Search leads on the public web, or select a suspected repost to compare against this original. Use the same media type.",style=MaterialTheme.typography.bodySmall)
+        SecondaryButton(text="Compare a suspected repost",enabled=!busy,modifier=Modifier.fillMaxWidth(),onClick={picker.launch(PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageAndVideo))})
+        SecondaryButton(text=if(busy) "Working?" else "Reverse search the web",enabled=!busy && configured,modifier=Modifier.fillMaxWidth(),onClick={confirmSearch=true})
+        if(!configured) Text("Web search is currently unavailable. Candidate comparison is available for your uploaded originals.",style=MaterialTheme.typography.bodySmall)
+        message?.let {Text(it,style=MaterialTheme.typography.bodySmall)}
+        results.forEach { result ->
+            Text(result.optString("title").ifBlank {"Unverified search lead"},style=MaterialTheme.typography.titleSmall)
+            Text(result.getString("url"),style=MaterialTheme.typography.bodySmall,maxLines=2)
+            TextButton(onClick={
+                val uri=Uri.parse(result.getString("url"))
+                if(uri.scheme in listOf("https","http") && uri.host!=null && uri.userInfo==null)
+                    context.startActivity(Intent(Intent.ACTION_VIEW,uri))
+            }) {Text("Review source in browser")}
+        }
+    }
+    if(confirmSearch) AlertDialog(onDismissRequest={confirmSearch=false},title={Text("Search with Google?")},
+        text={Text("Ditto sends this image, or five sampled video frames, to Google Vision Web Detection. Results are unverified leads and may miss reposts. Nothing is sent to the source account.")},
+        dismissButton={TextButton(onClick={confirmSearch=false}) {Text("Cancel")}},
+        confirmButton={TextButton(onClick={
+            confirmSearch=false;busy=true;message=null;results=emptyList()
+            scope.launch {
+                try {
+                    val result=withContext(Dispatchers.IO) {JSONObject(connectedApi(context).request("api/discovery/$contentId/web-search","{\"consent_to_google\":true}"))}
+                    val rows=result.getJSONArray("results")
+                    results=(0 until rows.length()).map {rows.getJSONObject(it)}
+                    message=if(results.isEmpty()) "No web leads returned. This does not establish that no reposts exist." else result.getString("notice")
+                } catch(e:CancellationException) {throw e}
+                catch(e:Exception) {message=e.message ?: "Search unavailable."}
+                finally {busy=false}
+            }
+        }) {Text("Search")}})
 }

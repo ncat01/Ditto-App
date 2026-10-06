@@ -105,7 +105,7 @@ fun ScanScreen(onOpenCase: (String) -> Unit) {
             )
             Spacer(Modifier.height(6.dp))
             Text(
-                "Select an original to fingerprint and scan the synthetic corpus. Live discovery is unavailable.",
+                "Select an original to compare suspected copies or search for matching images on the web.",
                 style = MaterialTheme.typography.bodyMedium,
                 color = DittoColors.TextSecondary
             )
@@ -170,16 +170,21 @@ fun ScanScreen(onOpenCase: (String) -> Unit) {
                 selected.localUri?.let { uri -> if(selected.kind==com.ditto.app.domain.model.ContentKind.VIDEO || uri.endsWith(".mp4")) com.ditto.app.ui.components.VideoPreview(uri,"Preview your original") }
             }
         }
+        state.selectedContent?.let { selected ->
+            if(com.ditto.app.core.BackendConnection(context).enabled()) item {
+                androidx.compose.runtime.key(selected.id) { ContentDiscoveryCard(selected.id) }
+            }
+        }
         // --- error ---
         state.error?.let { message ->
             item { ScanErrorCard(message = message, onRetry = { scanVm.startScan() }) }
         }
 
         // --- scan action / progress ---
-        if (state.selectedContent != null && state.stage == ScanStage.IDLE) {
+        if (com.ditto.app.BuildConfig.DEBUG && state.selectedContent != null && state.stage == ScanStage.IDLE) {
             item {
                 PrimaryButton(
-                    text = "Scan for matches",
+                    text = "Run sample scan",
                     onClick = { scanVm.startScan() },
                     modifier = Modifier.fillMaxWidth()
                 )

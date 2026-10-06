@@ -23,7 +23,15 @@ settings = get_settings()
 
 @asynccontextmanager
 async def lifespan(_: FastAPI):
+    if not settings.demo_mode:
+        from app.services.instagram_oauth import require_oauth
+        from app.services.account_email import require_email
+        require_oauth(); require_email()
+        if not settings.support_email or not settings.operator_name:
+            raise RuntimeError("Production requires SUPPORT_EMAIL and OPERATOR_NAME.")
     init_db()
+    from app.services.account_deletion import purge_media
+    purge_media()
     db = SessionLocal()
     try:
         created = 0  # Each authenticated user explicitly seeds their own corpus.
@@ -40,7 +48,10 @@ app = FastAPI(
     title="Ditto",
     description="An Agentic AI Content Credit System — detection, verification, "
                 "human-approved action, and autonomous follow-up.",
-    version="1.0.0",
+    version="1.6.0",
+    docs_url="/docs" if settings.demo_mode else None,
+    redoc_url="/redoc" if settings.demo_mode else None,
+    openapi_url="/openapi.json" if settings.demo_mode else None,
 )
 
 # The Android client talks to this API directly; a browser dashboard may be added
@@ -56,6 +67,8 @@ app.add_middleware(
 from app.api.instagram_oauth import router as instagram_router
 app.include_router(instagram_router)
 app.include_router(auth_router)
+from app.api.account_pages import router as account_pages_router
+app.include_router(account_pages_router)
 app.include_router(router)
 
 
@@ -65,7 +78,7 @@ async def unhandled(request: Request, exc: Exception) -> JSONResponse:
     logger.exception("Unhandled error on %s", request.url.path)
     return JSONResponse(
         status_code=500,
-        content={"detail": "Ditto hit an unexpected error. The request was not applied."},
+        content={"detail": "Ditto hit an unexpected error. Refresh your data before retrying."},
     )
 
 
@@ -77,3 +90,8 @@ def root() -> dict:
         "docs": "/docs",
         "health": "/api/health",
     }
+
+from app.api.web_search import router as web_search_router
+app.include_router(web_search_router)
+from app.api.legal_pages import router as legal_pages_router
+app.include_router(legal_pages_router)

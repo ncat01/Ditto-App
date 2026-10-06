@@ -33,6 +33,7 @@ def healthy():
 
 def run():
     DATA.mkdir(exist_ok=True)
+    (DATA / 'supervisor.pid').write_text(str(os.getpid()))
     env = environment()
     subprocess.run([sys.executable, '-m', 'alembic', 'upgrade', 'head'], cwd=BACKEND, env=env, check=True)
     commands = [[sys.executable, '-m', 'uvicorn', 'app.main:app', '--host', '0.0.0.0', '--port', '8010', '--workers', '1', '--no-access-log'],
@@ -50,6 +51,46 @@ def run():
         for p in children:
             try: p.wait(timeout=10)
             except subprocess.TimeoutExpired: p.kill(); p.wait()
+        (DATA / 'supervisor.pid').unlink(missing_ok=True)
+
+def stop_supervisor():
+    pid_file = DATA / 'supervisor.pid'
+    if not pid_file.is_file():
+        if healthy():
+            if os.name == 'nt':
+                raise SystemExit('Stop the older supervisor through its Windows terminal.')
+            expected = str(Path(__file__).resolve()).encode()
+            matches = []
+            for entry in Path('/proc').iterdir():
+                if not entry.name.isdigit(): continue
+                try: command = (entry / 'cmdline').read_bytes().split(b'\0')
+                except OSError: continue
+                if expected in command and b'run' in command:
+                    matches.append(int(entry.name))
+            if len(matches) != 1:
+                raise SystemExit('Cannot identify one owned supervisor; no process was stopped.')
+            pid = matches[0]
+        else:
+            print('Ditto supervisor is already stopped.')
+            return
+    else:
+        pid = int(pid_file.read_text().strip())
+    if os.name == 'nt':
+        raise SystemExit('Use the running supervisor terminal to stop it on Windows. Automated stop is supported in Codespaces/Linux.')
+    command_file = Path('/proc') / str(pid) / 'cmdline'
+    if not command_file.exists():
+        pid_file.unlink(missing_ok=True)
+        return
+    command = command_file.read_bytes().split(b'\0')
+    expected = str(Path(__file__).resolve()).encode()
+    if expected not in command or b'run' not in command:
+        raise SystemExit('PID ownership check failed; no process was stopped.')
+    os.kill(pid, signal.SIGTERM)
+    for _ in range(30):
+        if not healthy():
+            print('Ditto supervisor stopped.'); return
+        time.sleep(1)
+    raise SystemExit('Supervisor is still stopping. Wait before restarting.')
 
 def start():
     if healthy():
@@ -70,4 +111,5 @@ def start():
 
 if __name__ == '__main__':
     if len(sys.argv)>1 and sys.argv[1]=='run': run()
+    elif len(sys.argv)>1 and sys.argv[1]=='stop': stop_supervisor()
     else: start()

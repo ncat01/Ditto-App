@@ -87,7 +87,7 @@ def health(db: Session = Depends(get_db)) -> schemas.HealthOut:
         db.execute(select(func.count()).select_from(Case))
         database = "connected"
     except Exception:
-        database = "unavailable"
+        raise HTTPException(503, "Database unavailable") from None
     return schemas.HealthOut(
         status="ok",
         demoMode=settings.demo_mode,
@@ -124,13 +124,59 @@ async def upload_content(
         kind = "video" if file.content_type.startswith("video") else "image"
 
     clean_title = schemas.IngestRequest(title=title, kind=kind).title
+    remote_file_id = None
+    remote_name = None
+    if settings.media_storage == 'appwrite':
+        import uuid
+        from datetime import datetime, timedelta, timezone
+        from app.database.db import SessionLocal
+        from app.models.remote_media import RemoteMediaDeletion
+        extensions = {'image/jpeg': 'jpg', 'image/png': 'png', 'image/webp': 'webp',
+                      'video/mp4': 'mp4', 'video/quicktime': 'mov'}
+        if not file or not data:
+            raise HTTPException(422, 'A media file is required for Appwrite storage.')
+        if file.content_type not in extensions:
+            raise HTTPException(415, 'Appwrite uploads support JPEG, PNG, WebP, MP4 and MOV.')
+        if len(data) > 20_000_000:
+            raise HTTPException(413, 'Appwrite uploads are limited to 20 MB.')
+        remote_file_id = uuid.uuid4().hex
+        remote_name = remote_file_id + '.' + extensions[file.content_type]
+        # Reserve cleanup before any network upload; it survives crashes and rollback.
+        with SessionLocal() as cleanup_db:
+            cleanup_db.add(RemoteMediaDeletion(file_id=remote_file_id,
+                not_before=datetime.now(timezone.utc) + timedelta(minutes=10)))
+            cleanup_db.commit()
+    item = None
     try:
-        item = case_service.ingest_content(db, clean_title, data, kind)
+        item = case_service.ingest_content(db, clean_title, data, kind, commit=False)
+        if remote_file_id:
+            from pathlib import Path
+            from starlette.concurrency import run_in_threadpool
+            from app.providers.appwrite_storage import upload_private
+            from app.models.remote_media import RemoteMedia, RemoteMediaDeletion
+            await run_in_threadpool(upload_private, Path(item.local_uri), remote_file_id, remote_name)
+            db.add(RemoteMedia(content_id=item.id, user_id=db.info['user_id'], file_id=remote_file_id))
+            pending = db.get(RemoteMediaDeletion, remote_file_id)
+            if pending:
+                db.delete(pending)
+        item.user_id = db.info['user_id']
+        item.source_platform = schemas._sanitize(source)[:64] or 'Local upload'
+        db.commit()
     except ValueError as exc:
+        db.rollback()
+        if item and item.local_uri:
+            from pathlib import Path
+            Path(item.local_uri).unlink(missing_ok=True)
         raise HTTPException(422,str(exc)) from exc
-    item.user_id = db.info["user_id"]
-    item.source_platform = schemas._sanitize(source)[:64] or "Local upload"
-    db.commit()
+    except Exception as exc:
+        db.rollback()
+        if item and item.local_uri:
+            from pathlib import Path
+            Path(item.local_uri).unlink(missing_ok=True)
+        from app.providers.appwrite import AppwriteUnavailable
+        if isinstance(exc, AppwriteUnavailable):
+            raise HTTPException(503, 'Remote upload failed; no original was saved. Please retry later.') from None
+        raise
     return schemas.ContentOut(
         id=item.id, title=item.title, kind=item.kind,
         perceptualHash=item.perceptual_hash, paletteSeed=item.palette_seed,
@@ -156,6 +202,9 @@ def list_content(db: Session = Depends(get_db)) -> list[schemas.ContentOut]:
 
 @router.post("/scan", response_model=list[schemas.CaseOut])
 def scan(body: schemas.ScanRequest, db: Session = Depends(get_db)) -> list[schemas.CaseOut]:
+    if not settings.demo_mode: raise HTTPException(503, "Automatic discovery is not available. A live discovery provider must be configured before launch.")
+    from app.services.request_budget import consume
+    consume("scan:" + db.info["user_id"], 30, 3600)
     try:
         cases = case_service.scan_content(db, body.contentId)
     except ValueError as exc:
@@ -284,6 +333,7 @@ def activity(limit: int = 100, db: Session = Depends(get_db)) -> list[schemas.Ac
 
 @router.post("/demo/seed")
 def seed_demo(force: bool = False, db: Session = Depends(get_db)) -> dict:
+    if not settings.demo_mode: raise HTTPException(409, "Sample content unavailable outside demo mode")
     created = seed_service.seed(db, force=force)
     return {"casesCreated": created, "corpus": corpus.DISPLAY_NAME}
 
@@ -304,6 +354,20 @@ def media(content_id: str, db: Session = Depends(get_db)):
     item=db.get(Content,content_id)
     if not item or item.user_id!=db.info["user_id"] or not item.local_uri:
         raise HTTPException(404,"Media unavailable")
+    from app.models.remote_media import RemoteMedia
+    remote = db.get(RemoteMedia, content_id)
+    if remote:
+        if remote.user_id != db.info['user_id']:
+            raise HTTPException(404, 'Media unavailable')
+        from app.providers.appwrite_storage import download_private
+        from app.providers.appwrite import AppwriteUnavailable
+        from fastapi.responses import Response
+        try:
+            data = download_private(remote.file_id)
+        except AppwriteUnavailable:
+            raise HTTPException(503, 'Remote media temporarily unavailable') from None
+        return Response(data, media_type='video/mp4' if item.kind == 'video' else 'application/octet-stream',
+                        headers={'Cache-Control': 'private, no-store', 'X-Content-Type-Options': 'nosniff'})
     path=Path(item.local_uri).resolve()
     roots=[Path(settings.media_root),Path(__file__).resolve().parents[3]/"demo_data/videos"]
     if not any(path.is_relative_to(root.resolve()) for root in roots) or not path.is_file():
@@ -357,6 +421,8 @@ def read_notification(notification_id: str, db: Session = Depends(get_db)):
 @router.post("/cases/{case_id}/ai-draft")
 def ai_draft(case_id: str, db: Session = Depends(get_db)):
     """Explicit Gemini preview; the existing approval and edit flow remains authoritative."""
+    from app.services.request_budget import consume
+    consume("gemini:" + db.info["user_id"], 20, 86400)
     from app.providers.gemini import generate_draft, ProviderUnavailable
     case = db.get(Case, case_id)
     if not case or case.content.user_id != db.info['user_id']:

@@ -22,7 +22,7 @@ import kotlinx.coroutines.withContext
 fun AccountGate() {
     val context = LocalContext.current.applicationContext
     val accounts = remember { LocalAccounts(context) }
-    val connection=remember { com.ditto.app.core.BackendConnection(context) }
+    val connection=remember { com.ditto.app.core.BackendConnection(context).also { if(!com.ditto.app.BuildConfig.DEBUG) it.configure(true,com.ditto.app.BuildConfig.API_BASE_URL) } }
     var connected by remember { mutableStateOf(connection.enabled()) }
     var endpoint by remember { mutableStateOf(connection.endpoint()) }
     var user by remember { mutableStateOf(if(connection.enabled()) connection.session()?.let { "server:${it.userId}" } else accounts.session()) }
@@ -53,12 +53,12 @@ fun AccountGate() {
             Text("Made by you. Credited to you.",style=com.ditto.app.ui.theme.HandwritingStyle,color=DittoColors.SecondaryBlue)
             Spacer(Modifier.height(16.dp))
             Text(if(signup) "Create your account" else "Welcome back",style=MaterialTheme.typography.headlineMedium)
-            Spacer(Modifier.height(12.dp)); Text(if(connected) "Connected test • Your account and uploaded media are stored on this backend. Discovery remains synthetic and actions are sandboxed." else "Offline demo • Accounts and media stay on this device.",style=MaterialTheme.typography.bodySmall)
-            Row {
+            Spacer(Modifier.height(12.dp)); Text(if(connected) "Cloud account • Your account and uploaded media are stored on this backend. Discovery remains synthetic and actions are sandboxed." else "Offline demo • Accounts and media stay on this device.",style=MaterialTheme.typography.bodySmall)
+            if(com.ditto.app.BuildConfig.DEBUG) Row {
                 TextButton(enabled=!busy,onClick={ connected=false; connection.configure(false,endpoint);error=null }) { Text(if(!connected) "✓ Offline demo" else "Offline demo") }
-                TextButton(enabled=!busy,onClick={ connected=true;error=null }) { Text(if(connected) "✓ Connected test" else "Connected test") }
+                TextButton(enabled=!busy,onClick={ connected=true;error=null }) { Text(if(connected) "✓ Cloud account" else "Cloud account") }
             }
-            if(connected) {
+            if(connected && com.ditto.app.BuildConfig.DEBUG) {
                 OutlinedTextField(endpoint,{endpoint=it},label={Text("Backend URL")},placeholder={Text("https://your-codespace-8010.app.github.dev/")},singleLine=true,modifier=Modifier.fillMaxWidth())
                 Text("Resume your Codespace and make test port 8010 public. Use a separate server account; offline accounts are not uploaded.",style=MaterialTheme.typography.bodySmall)
             }
@@ -70,7 +70,20 @@ fun AccountGate() {
             Spacer(Modifier.height(20.dp))
             Button(enabled=!busy,onClick={ scope.launch { busy=true; error=null; val result=withContext(Dispatchers.IO) { runCatching { if(connected) { connection.configure(true,endpoint); "server:${connection.authenticate(email,password,signup)}" } else { connection.configure(false,endpoint); if(signup) accounts.signup(email,password) else accounts.login(email,password) } } }; result.onSuccess { user=it; password="" }.onFailure { error=it.message }; busy=false } },modifier=Modifier.fillMaxWidth()) { Text(if(busy) "Please wait…" else if(signup) "Sign up" else "Log in") }
             TextButton(onClick={signup=!signup;error=null}) { Text(if(signup) "Already have an account? Log in" else "Create an account") }
-            Text("Password reset is unavailable in this test build.",style=MaterialTheme.typography.bodySmall)
+            if(connected) TextButton(enabled=!busy && email.isNotBlank(), onClick={
+                scope.launch {
+                    busy=true;error=null
+                    try {
+                        connection.configure(true,endpoint)
+                        val response=withContext(Dispatchers.IO) {
+                            com.ditto.app.core.BackendApi(connection.endpoint(),null).request("api/auth/recovery",org.json.JSONObject().put("email",email).toString())
+                        }
+                        error=org.json.JSONObject(response).getString("message")
+                    } catch(e:kotlinx.coroutines.CancellationException) { throw e }
+                    catch(e:Exception) { error=e.message ?: "Could not request recovery email." }
+                    finally {busy=false}
+                }
+            }) {Text("Forgot password?")}
         }
     } else {
         key(user) {
@@ -101,7 +114,7 @@ fun AccountGate() {
                 showTutorial=false
             } else Column(Modifier.fillMaxSize()) {
                 Row(Modifier.fillMaxWidth().statusBarsPadding().padding(horizontal=16.dp),horizontalArrangement=Arrangement.SpaceBetween) {
-                    Text(if(connected) "CONNECTED TEST" else "OFFLINE DEMO",color=DittoColors.PrimaryBlue,modifier=Modifier.padding(top=14.dp),style=MaterialTheme.typography.labelSmall)
+                    Text(if(connected) "CLOUD ACCOUNT" else "OFFLINE DEMO",color=DittoColors.PrimaryBlue,modifier=Modifier.padding(top=14.dp),style=MaterialTheme.typography.labelSmall)
                     if(connected) TextButton(onClick={ scope.launch { withContext(Dispatchers.IO) { runCatching { (ServiceLocator.repository(context) as com.ditto.app.data.repository.RemoteDittoRepository).refresh() }.onFailure { clockMessage="Backend unavailable. Resume your Codespace." } } } }) { Text("Refresh") }
                     else TextButton(onClick={ val id=user!!; scope.launch { val count=withContext(Dispatchers.IO) { com.ditto.app.core.DemoClock.advance(context,id);com.ditto.app.core.FollowUpWorker.checkDue(context,id) };clockMessage="Demo clock +7 days: $count due sandbox cases checked." } }) { Text("+7 days") }
                     TextButton(onClick={

@@ -18,4 +18,4 @@ RUN useradd --create-home --uid 1000 ditto \
 USER ditto
 
 EXPOSE 8010
-CMD ["sh", "-c", "python -m alembic upgrade head && uvicorn app.main:app --host 0.0.0.0 --port 8010 --workers 1 --no-access-log"]
+CMD ["sh", "-c", "python -m alembic upgrade head && uvicorn app.main:app --host 0.0.0.0 --port 8010 --workers 1 --no-access-log --forwarded-allow-ips ${DITTO_TRUSTED_PROXY_IPS:-127.0.0.1}"]

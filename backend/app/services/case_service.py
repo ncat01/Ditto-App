@@ -96,7 +96,7 @@ def _next_case_id(db: Session) -> str:
 
 
 def ingest_content(db: Session, title: str, data: bytes | None, kind: str,
-                   seed: int | None = None) -> Content:
+                   seed: int | None = None, commit: bool = True) -> Content:
     seed = seed or (int(_now(db).timestamp()) % 7) + 1
     from pathlib import Path
     from app.matching.video import frames
@@ -135,7 +135,8 @@ def ingest_content(db: Session, title: str, data: bytes | None, kind: str,
         db, AgentKind.INGESTION, "Fingerprint generated",
         f"{item.title} -> pHash {item.perceptual_hash[:12]}… ({hasher.DISPLAY_NAME})",
     )
-    db.commit()
+    if commit:
+        db.commit()
     return item
 
 

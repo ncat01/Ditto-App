@@ -35,10 +35,11 @@ def client():
                             'X-Appwrite-Key': key})
 
 
-def upload_private(path: Path, file_id: str):
+def upload_private(path: Path, file_id: str, filename: str | None = None):
     identifier(file_id)
     size = path.stat().st_size
-    if not 0 < size <= MAX_BYTES or path.suffix.lstrip('.').lower() not in EXTENSIONS:
+    filename = filename or path.name
+    if Path(filename).name != filename or not 0 < size <= MAX_BYTES or Path(filename).suffix.lstrip('.').lower() not in EXTENSIONS:
         raise ValueError('Upload must be an allowed photo/video, at most 20 MB.')
     try:
         with client() as connection, path.open('rb') as source:
@@ -52,7 +53,7 @@ def upload_private(path: Path, file_id: str):
                     headers['X-Appwrite-ID'] = file_id
                 response = connection.post(f'storage/buckets/{BUCKET}/files',
                     data={'fileId': file_id}, headers=headers,
-                    files={'file': (path.name, chunk, 'application/octet-stream')})
+                    files={'file': (filename, chunk, 'application/octet-stream')})
                 if response.status_code not in (200, 201, 202):
                     raise AppwriteUnavailable('Appwrite storage rejected the upload.')
                 result = response.json()
@@ -75,3 +76,20 @@ def delete_private(file_id: str):
             raise AppwriteUnavailable('Appwrite storage rejected file deletion.')
     except httpx.HTTPError:
         raise AppwriteUnavailable('Storage could not be reached.') from None
+
+
+def download_private(file_id: str) -> bytes:
+    identifier(file_id)
+    try:
+        with client() as connection:
+            with connection.stream('GET', f'storage/buckets/{BUCKET}/files/{file_id}/download') as response:
+                if response.status_code != 200:
+                    raise AppwriteUnavailable('Remote media is unavailable.')
+                data = bytearray()
+                for chunk in response.iter_bytes():
+                    data.extend(chunk)
+                    if len(data) > MAX_BYTES:
+                        raise AppwriteUnavailable('Remote file exceeds the configured upload limit.')
+                return bytes(data)
+    except httpx.HTTPError:
+        raise AppwriteUnavailable('Remote media could not be reached.') from None

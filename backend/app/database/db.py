@@ -39,7 +39,7 @@ def get_db(request: Request) -> Iterator[Session]:
 def init_db() -> None:
     from app.models import tables  # noqa: F401  (registers the mappers)
 
-    from app.models import ledger, integrations
+    from app.models import ledger, integrations, account_security, remote_media
     Base.metadata.create_all(bind=engine)
 
 if settings.database_url.startswith("sqlite"):

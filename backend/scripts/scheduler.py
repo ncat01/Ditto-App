@@ -7,6 +7,8 @@ from app.database.db import SessionLocal
 from app.models.tables import User
 from app.services.scheduler import check_due
 def tick():
+    from app.services.account_deletion import purge_media
+    purge_media()
     with SessionLocal() as db:ids=list(db.scalars(select(User.id)))
     for user in ids:
         with SessionLocal() as db:

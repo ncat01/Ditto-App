@@ -4,6 +4,7 @@ Use a temporary APPWRITE_SETUP_KEY with columns.read/write,
 indexes.read/write and tables.read. Revoke it after setup.
 """
 import os
+import json
 import time
 import httpx
 
@@ -40,7 +41,14 @@ def setup(client):
             if (column.get('type') != 'string' or column.get('size') != size
                     or column.get('required') != required or column.get('array', False)
                     or column.get('encrypt', False)):
-                raise RuntimeError('Existing column differs from the schema: ' + key + '. Left unchanged.')
+                actual = {field: column.get(field) for field in
+                          ('type', 'size', 'required', 'array', 'encrypt', 'status')}
+                expected = {'type': 'string', 'size': size, 'required': required,
+                            'array': False, 'encrypt': False}
+                raise RuntimeError('Existing column differs: ' + key +
+                                   '\nActual settings: ' + json.dumps(actual) +
+                                   '\nExpected settings: ' + json.dumps(expected) +
+                                   '\nColumn left unchanged. These settings contain no keys or row data.')
             print('Kept existing column: ' + key)
         else:
             raise RuntimeError(f'Unable to inspect {key}: HTTP {response.status_code}.')

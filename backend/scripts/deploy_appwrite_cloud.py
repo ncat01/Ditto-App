@@ -274,13 +274,17 @@ def main():
         os.environ.pop('PUBLIC_BASE_URL', None)
     with Client(key) as client:
         if args.stage:
+            print('Deployment step: verify private storage settings', flush=True)
             private_storage(client)
+            print('Deployment step: prepare isolated database schema', flush=True)
             schema(client)
             archive = ROOT / 'output/ditto-appwrite-candidate.tar.gz'
             report['bundle'] = package(archive)
             report['deployments'] = {}
             for identity in ('ditto-api', 'ditto-worker'):
+                print('Deployment step: configure ' + identity, flush=True)
                 function(client, identity)
+                print('Deployment step: build ' + identity, flush=True)
                 report['deployments'][identity] = build(client, identity, archive)
                 if identity == 'ditto-api' and not os.getenv('PUBLIC_BASE_URL'):
                     base = generated_origin(client)
@@ -290,6 +294,7 @@ def main():
                         report['deployments'][identity] = build(client, identity, archive)
                 save(report)
             report['publicBaseUrl'] = os.getenv('PUBLIC_BASE_URL', '')
+        print('Deployment step: verify live accounts and private storage', flush=True)
         report['verification'] = verify(client)
         report['finishedAt'] = stamp()
         save(report)
@@ -299,5 +304,10 @@ def main():
 if __name__ == '__main__':
     try:
         main()
+    except CloudError as exc:
+        # CloudError stores only a numeric status and validated symbolic type;
+        # never include response bodies, request headers or secret values.
+        print('Appwrite failure: HTTP ' + str(exc.status) + '; code=' + exc.code, flush=True)
+        raise SystemExit('Deployment stopped. The step above identifies where it failed. Source retained; nothing published.') from None
     except Exception:
         raise SystemExit('Deployment stopped safely. Check private scope/configuration/build status; no credential or provider response was printed. Existing source retained; nothing was published.') from None

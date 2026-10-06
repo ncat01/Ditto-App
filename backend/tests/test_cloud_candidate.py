@@ -18,6 +18,18 @@ from cloud.store import Store, digest, now, payload, stamp
 from cloud.worker import run_job, sweep
 
 
+def test_inline_table_indexes_use_attributes_without_changing_stored_schema():
+    from cloud.schema import TABLES, table_creation
+    original = copy.deepcopy(TABLES)
+    for spec in TABLES:
+        request = table_creation(spec)
+        for expected, sent in zip(spec['indexes'], request['indexes']):
+            assert sent['attributes'] == expected['columns']
+            assert 'columns' not in sent
+            assert sent['orders'] == expected['orders']
+    assert TABLES == original
+
+
 class MemoryClient:
     def __init__(self):
         self.data = {ACCOUNTS: {}, RECORDS: {}, BUDGETS: {}}

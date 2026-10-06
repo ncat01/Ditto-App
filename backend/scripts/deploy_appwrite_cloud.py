@@ -16,7 +16,7 @@ from urllib.parse import urlsplit
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 from cloud.client import ACCOUNTS, BUDGETS, RECORDS, DATABASE, Client, CloudError, ident, query
 from cloud.files import Files, BUCKET
-from cloud.schema import TABLES
+from cloud.schema import TABLES, table_creation
 from cloud.store import encode, stamp
 from scripts.package_appwrite_cloud import package
 
@@ -70,7 +70,7 @@ def schema(client, sleep=time.sleep):
         except CloudError as exc:
             if exc.status != 404:
                 raise
-            client.request('POST', f'/tablesdb/{DATABASE}/tables', json={**spec, 'permissions': [], 'rowSecurity': True, 'enabled': True})
+            client.request('POST', f'/tablesdb/{DATABASE}/tables', json={**table_creation(spec), 'permissions': [], 'rowSecurity': True, 'enabled': True})
             existing = None
         for attempt in range(60):
             existing = client.request('GET', path)

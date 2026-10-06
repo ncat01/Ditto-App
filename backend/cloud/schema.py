@@ -2,6 +2,14 @@
 from cloud.client import ACCOUNTS, BUDGETS, RECORDS
 
 
+def table_creation(spec):
+    # Inline table creation uses "attributes" for indexes; the separate
+    # create-index endpoint and returned index model use "columns".
+    return {**spec, 'indexes': [
+        {**{key: value for key, value in index.items() if key != 'columns'},
+         'attributes': list(index['columns'])} for index in spec['indexes']]}
+
+
 def column(key, type, **extra):
     return {'key': key, 'type': type, 'required': True, **extra}
 

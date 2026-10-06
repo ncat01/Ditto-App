@@ -6,7 +6,7 @@ import sys
 from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 from cloud.client import Client, CloudError, DATABASE
-from cloud.schema import TABLES
+from cloud.schema import TABLES, table_creation
 
 
 def main():
@@ -29,7 +29,7 @@ def main():
                 if exc.status != 404:
                     raise
                 client.request('POST', f'/tablesdb/{DATABASE}/tables',
-                               json={**spec, 'permissions': [], 'rowSecurity': True, 'enabled': True})
+                               json={**table_creation(spec), 'permissions': [], 'rowSecurity': True, 'enabled': True})
                 print('Submitted new table:', spec['tableId'])
                 continue
             if current.get('$permissions') != [] or current.get('rowSecurity') is not True:

@@ -188,14 +188,22 @@ def build(client, identity, archive, sleep=time.sleep):
             data={'activate': 'false', 'entrypoint': spec['entrypoint'], 'commands': spec['commands']},
             files={'code': (archive.name, code, 'application/gzip')})
     deployment = ident(result['$id'])
+    print('Function deployment ID: ' + deployment, flush=True)
+    previous_status = None
     for attempt in range(180):
         result = client.request('GET', '/functions/' + identity + '/deployments/' + deployment)
+        status = result.get('status')
+        if status != previous_status:
+            print('Function build status: ' + (status if status in ('waiting', 'processing', 'building', 'ready', 'failed', 'canceled', 'queued') else 'unknown'), flush=True)
+            previous_status = status
         if result.get('status') == 'ready':
             client.request('PATCH', '/functions/' + identity + '/deployment', json={'deploymentId': deployment})
             return deployment
         if result.get('status') in ('failed', 'canceled'):
+            print('Build failed. Open Appwrite Functions > ' + identity + ' > Deployments > Build logs. Review the package error; do not share credentials or full logs.', flush=True)
             raise ValueError('Function build failed; inspect private Console without copying logs into chat')
         sleep(3)
+    print('Build is still pending after nine minutes. Inspect the existing deployment before creating another build.', flush=True)
     raise ValueError('Function build still pending; inspect Console before retrying')
 
 

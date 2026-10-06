@@ -100,6 +100,13 @@ def schema(client, sleep=time.sleep):
 
 def private_storage(client):
     value = client.request('GET', '/storage/buckets/' + BUCKET)
+    print('Storage checks: ' + json.dumps({
+        'privatePermissions': value.get('$permissions') == [],
+        'fileSecurityEnabled': value.get('fileSecurity') is True,
+        'encryptionEnabled': value.get('encryption') is True,
+        'maximumBytes': value.get('maximumFileSize') if isinstance(value.get('maximumFileSize'), int) else None,
+        'missingExtensions': sorted({'jpg', 'png', 'webp', 'mp4', 'mov'} - set(value.get('allowedFileExtensions', [])))
+    }), flush=True)
     if (value.get('$permissions') != [] or value.get('fileSecurity') is not True or
             value.get('encryption') is not True or not 0 < value.get('maximumFileSize', 0) <= 20_000_000):
         raise ValueError('Storage privacy/encryption/20 MB limit must be verified first')

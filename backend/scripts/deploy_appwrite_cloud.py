@@ -64,6 +64,7 @@ def save(report):
 
 def schema(client, sleep=time.sleep):
     for spec in TABLES:
+        print('Schema table: ' + spec['tableId'], flush=True)
         path = f'/tablesdb/{DATABASE}/tables/' + spec['tableId']
         try:
             existing = client.request('GET', path)
@@ -75,6 +76,7 @@ def schema(client, sleep=time.sleep):
         for attempt in range(60):
             existing = client.request('GET', path)
             if existing.get('$permissions') != [] or existing.get('rowSecurity') is not True:
+                print('Schema access check: ' + json.dumps({'privatePermissions': existing.get('$permissions') == [], 'rowSecurity': existing.get('rowSecurity') is True}), flush=True)
                 raise ValueError('Candidate schema has unexpected permissions')
             columns = {row['key']: row for row in existing.get('columns', [])}
             indexes = {row['key']: row for row in existing.get('indexes', [])}
@@ -83,18 +85,22 @@ def schema(client, sleep=time.sleep):
                     if expected['key'] not in indexes:
                         client.request('POST', path + '/indexes', json=expected)
             if any(row.get('status') in ('failed', 'stuck') for row in list(columns.values()) + list(indexes.values())):
+                print('Schema build has failed or stuck definitions; inspect this table in Appwrite.', flush=True)
                 raise ValueError('Schema build failed')
             if all(columns.get(c['key'], {}).get('status') == 'available' for c in spec['columns']) and all(indexes.get(i['key'], {}).get('status') == 'available' for i in spec['indexes']):
                 break
             sleep(2)
         else:
+            print('Schema definitions still pending after waiting.', flush=True)
             raise ValueError('Schema build pending; rerun later')
         for expected in spec['columns']:
             actual = columns[expected['key']]
             if any(actual.get(k) != v for k, v in expected.items()):
+                print('Column definition mismatch: ' + json.dumps({'column': expected['key'], 'expected': expected, 'actual': {k: actual.get(k) for k in expected}}), flush=True)
                 raise ValueError('Existing candidate schema differs; not repaired destructively')
         for expected in spec['indexes']:
             if any(indexes[expected['key']].get(k) != v for k, v in expected.items()):
+                print('Index definition mismatch: ' + json.dumps({'index': expected['key'], 'expected': expected, 'actual': {k: indexes[expected['key']].get(k) for k in expected}}), flush=True)
                 raise ValueError('Existing candidate index differs')
 
 

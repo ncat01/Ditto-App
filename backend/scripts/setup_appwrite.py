@@ -38,7 +38,7 @@ def setup(client):
             print('Created column: ' + key)
         elif response.status_code == 200:
             column = response.json()
-            if (column.get('type') != 'string' or column.get('size') != size
+            if (column.get('type') not in ('string', 'varchar') or column.get('size') != size
                     or column.get('required') != required or column.get('array', False)
                     or column.get('encrypt', False)):
                 actual = {field: column.get(field) for field in

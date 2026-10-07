@@ -26,6 +26,7 @@ import androidx.compose.ui.unit.dp
 import com.ditto.app.domain.model.ActionType
 import com.ditto.app.domain.model.Case
 import com.ditto.app.domain.model.CaseState
+import com.ditto.app.domain.model.ContentKind
 import com.ditto.app.ui.theme.DittoColors
 import java.util.concurrent.TimeUnit
 
@@ -35,15 +36,26 @@ fun CaseCard(
     case: Case,
     onClick: () -> Unit,
     modifier: Modifier = Modifier,
-    showAction: Boolean = true
+    showAction: Boolean = true,
+    previewUri: String? = null,
+    previewKind: ContentKind? = null
 ) {
+    val similarityAvailable = case.candidate.overallSimilarity.let { it.isFinite() && it in 0.0..1.0 }
     DittoCard(modifier = modifier, onClick = onClick) {
         Row(verticalAlignment = Alignment.Top) {
-            EvidenceVisual(
-                seed = case.candidate.paletteSeed,
-                modifier = Modifier.size(64.dp),
-                cornerRadius = 6
-            )
+            if (previewKind == ContentKind.VIDEO) {
+                Box(Modifier.size(64.dp).background(DittoColors.BackgroundAlt), contentAlignment = Alignment.Center) {
+                    Text("Video", style = MaterialTheme.typography.labelSmall)
+                }
+            } else {
+                EvidenceVisual(
+                    seed = case.candidate.paletteSeed,
+                    modifier = Modifier.size(64.dp),
+                    localUri = previewUri,
+                    label = "Private original",
+                    cornerRadius = 6
+                )
+            }
             Spacer(Modifier.width(12.dp))
             Column(Modifier.weight(1f)) {
                 Row(
@@ -73,13 +85,13 @@ fun CaseCard(
 
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     Text(
-                        text = "${case.confidencePct}%",
+                        text = if (similarityAvailable) "${case.similarityPct}%" else "Unavailable",
                         style = MaterialTheme.typography.titleLarge,
                         color = DittoColors.PrimaryBlue
                     )
                     Spacer(Modifier.width(4.dp))
                     Text(
-                        text = "rule score",
+                        text = "Content similarity",
                         style = MaterialTheme.typography.bodySmall,
                         color = DittoColors.TextSecondary
                     )

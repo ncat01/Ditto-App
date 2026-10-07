@@ -36,7 +36,8 @@ def _case_out(case: Case) -> schemas.CaseOut:
         contentTitle=case.content.title if case.content else "",
         contentPaletteSeed=case.content.palette_seed if case.content else 1,
         candidate=schemas.CandidateOut(
-            id=c.id, platform=c.platform, accountName=c.account_name,
+            id=c.id, mediaKind=case.content.kind if case.content else 'video',
+            platform=c.platform, accountName=c.account_name,
             accountHandle=c.account_handle, sourceUrl=c.source_url, caption=c.caption,
             followerCount=c.follower_count, monetized=c.monetized,
             hashSimilarity=c.hash_similarity, visualSimilarity=c.visual_similarity,

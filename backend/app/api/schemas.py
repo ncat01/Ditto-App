@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 from datetime import datetime
+from typing import Literal
 
 from pydantic import BaseModel, Field, field_validator
 
@@ -31,6 +32,7 @@ class SignalOut(BaseModel):
 
 class CandidateOut(BaseModel):
     id: str
+    mediaKind: Literal['image', 'video'] = 'video'
     platform: str
     accountName: str
     accountHandle: str

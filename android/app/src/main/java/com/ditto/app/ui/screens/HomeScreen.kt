@@ -26,6 +26,8 @@ fun HomeScreen(vm: DittoViewModel,onOpenCase:(String)->Unit,onSeeAllCases:()->Un
                onOpenFollowUp:()->Unit,onOpenAnalytics:()->Unit,onOpenScan:()->Unit) {
     val stats by vm.stats.collectAsStateWithLifecycle()
     val cases by vm.cases.collectAsStateWithLifecycle()
+    val originals by vm.content.collectAsStateWithLifecycle()
+    val originalsById=remember(originals) {originals.associateBy {it.id}}
     val attention=remember(cases) { DittoViewModel.needingAttention(cases).take(3) }
     LazyColumn(Modifier.fillMaxSize().padding(horizontal=20.dp),
         contentPadding=PaddingValues(top=18.dp,bottom=34.dp),verticalArrangement=Arrangement.spacedBy(18.dp)) {
@@ -64,7 +66,10 @@ fun HomeScreen(vm: DittoViewModel,onOpenCase:(String)->Unit,onSeeAllCases:()->Un
             item { SectionHeading("Ready for your review",trailing={
                 Text("All cases",color=DittoColors.PrimaryBlue,modifier=Modifier.clickable(onClick=onSeeAllCases))
             }) }
-            items(attention,key={it.id}) { CaseCard(case=it,onClick={onOpenCase(it.id)}) }
+            items(attention,key={it.id}) { case ->
+                val original=originalsById[case.contentId]
+                CaseCard(case=case,onClick={onOpenCase(case.id)},previewUri=original?.localUri,previewKind=original?.kind)
+            }
         } else {
             item {
                 DittoCard(background=DittoColors.Surface.copy(alpha=.82f),borderColor=DittoColors.LightBlue) {

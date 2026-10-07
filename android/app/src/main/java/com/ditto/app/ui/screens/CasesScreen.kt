@@ -51,27 +51,46 @@ private enum class CaseFilter(val label: String, val states: Set<CaseState>?) {
 
 private enum class CaseSort(val label: String) {
     UPDATED("Last updated"),
-    CONFIDENCE("Confidence"),
+    SIMILARITY("Content similarity"),
     SEVERITY("Severity"),
     NEWEST("Newest")
+}
+
+private enum class SimilarityFilter(val label: String) {
+    ALL("Any similarity"),
+    HIGH("80% or higher"),
+    LOWER("Below 80%"),
+    UNAVAILABLE("Similarity unavailable");
+
+    fun accepts(score: Double): Boolean {
+        val available = score.isFinite() && score in 0.0..1.0
+        return when (this) {
+            ALL -> true
+            HIGH -> available && score >= 0.8
+            LOWER -> available && score < 0.8
+            UNAVAILABLE -> !available
+        }
+    }
 }
 
 @Composable
 fun CasesScreen(vm: DittoViewModel, onOpenCase: (String) -> Unit) {
     val cases by vm.cases.collectAsStateWithLifecycle()
+    val originals by vm.content.collectAsStateWithLifecycle()
+    val originalsById=remember(originals) {originals.associateBy {it.id}}
     var filter by remember { mutableStateOf(CaseFilter.ALL) }
     var sort by remember { mutableStateOf(CaseSort.UPDATED) }
     var query by remember { mutableStateOf("") }
 
     var severity by remember { mutableStateOf("Any severity") }
     var category by remember { mutableStateOf("Any category") }
-    var confidence by remember { mutableStateOf("Any confidence") }
-    val visible = remember(cases, filter, sort, query, severity, category, confidence) {
+    var similarity by remember { mutableStateOf(SimilarityFilter.ALL) }
+    val visible = remember(cases, filter, sort, query, severity, category, similarity) {
         cases
             .filter { case -> filter.states?.contains(case.state) ?: true }
             .filter { severity=="Any severity" || it.verification?.severity?.label==severity }
             .filter { category=="Any category" || it.verification?.classification?.label==category }
-            .filter { confidence=="Any confidence" || (if(confidence=="High rule score") (it.verification?.confidence ?: 0.0)>=.8 else (it.verification?.confidence ?: 0.0)<.8) }
+            .filter { similarity.accepts(it.candidate.overallSimilarity) }
             .filter { case ->
                 query.isBlank() || listOf(
                     case.id,
@@ -85,8 +104,8 @@ fun CasesScreen(vm: DittoViewModel, onOpenCase: (String) -> Unit) {
                 when (sort) {
                     CaseSort.UPDATED -> compareByDescending { it.updatedAt }
                     CaseSort.NEWEST -> compareByDescending { it.createdAt }
-                    CaseSort.CONFIDENCE -> compareByDescending {
-                        it.verification?.confidence ?: 0.0
+                    CaseSort.SIMILARITY -> compareByDescending {
+                        it.candidate.overallSimilarity.takeIf { score -> score.isFinite() && score in 0.0..1.0 } ?: -1.0
                     }
                     CaseSort.SEVERITY -> compareByDescending {
                         it.verification?.severity?.rank ?: 0
@@ -121,8 +140,8 @@ fun CasesScreen(vm: DittoViewModel, onOpenCase: (String) -> Unit) {
         item {
             Row(Modifier.horizontalScroll(rememberScrollState()),horizontalArrangement=Arrangement.spacedBy(6.dp)) {
                 androidx.compose.material3.TextButton(onClick={ val choices=listOf("Any severity","Low","Medium","High");severity=choices[(choices.indexOf(severity)+1)%choices.size] }) { Text(severity) }
-                androidx.compose.material3.TextButton(onClick={ val choices=listOf("Any category","Genuine Repost","Simulated Likeness Misuse","False Positive");category=choices[(choices.indexOf(category)+1)%choices.size] }) { Text(category) }
-                androidx.compose.material3.TextButton(onClick={ val choices=listOf("Any confidence","High rule score","Needs review");confidence=choices[(choices.indexOf(confidence)+1)%choices.size] }) { Text(confidence) }
+                androidx.compose.material3.TextButton(onClick={ val choices=listOf("Any category","Genuine Repost","False Positive");category=choices[(choices.indexOf(category)+1)%choices.size] }) { Text(category) }
+                androidx.compose.material3.TextButton(onClick={ val choices=SimilarityFilter.entries;similarity=choices[(choices.indexOf(similarity)+1)%choices.size] }) { Text(similarity.label) }
             }
         }
         item {
@@ -210,7 +229,8 @@ fun CasesScreen(vm: DittoViewModel, onOpenCase: (String) -> Unit) {
             }
         } else {
             items(visible, key = { it.id }) { case ->
-                CaseCard(case = case, onClick = { onOpenCase(case.id) })
+                val original=originalsById[case.contentId]
+                CaseCard(case = case, onClick = { onOpenCase(case.id) }, previewUri = original?.localUri, previewKind = original?.kind)
             }
         }
     }

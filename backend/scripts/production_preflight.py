@@ -19,7 +19,7 @@ checks = {
     'support_email': bool(settings.support_email.strip()),
     'smtp_transport': bool(settings.smtp_host and settings.smtp_from and settings.smtp_port in (465, 587)),
     'appwrite_storage_key': settings.media_storage != 'appwrite' or bool(settings.appwrite_api_key.get_secret_value()),
-    'live_discovery_configured': settings.has_vision,
+    'live_discovery_configured': settings.has_live_discovery,
     'live_outreach_implemented': settings.outreach_is_live,
 }
 print(json.dumps({'configuration_checks': checks,

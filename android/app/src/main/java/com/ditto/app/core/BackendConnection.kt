@@ -122,7 +122,7 @@ class BackendApi(val endpoint: String, private val token: String?, private val t
     }
     suspend fun awaitJob(jobId: String): String {
         require(jobId.matches(Regex("[a-zA-Z0-9._-]{1,36}"))) { "Invalid processing receipt." }
-        repeat(160) {
+        repeat(600) {
             kotlinx.coroutines.delay(1500)
             val job=JSONObject(request("api/jobs/$jobId"))
             when(job.getString("state")) {

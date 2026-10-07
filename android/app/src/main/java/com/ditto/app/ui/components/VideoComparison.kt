@@ -57,7 +57,7 @@ private fun ServerVideoComparison(case: Case) {
                 coil.compose.AsyncImage(model=candidate,contentDescription="Submitted candidate",modifier=Modifier.weight(1f).height(180.dp))
             } else {
                 VideoPreview(original,"Original",Modifier.weight(1f))
-                VideoPreview(candidate,if(case.candidate.platform == "Submitted evidence") "Submitted candidate" else "Candidate • demonstration",Modifier.weight(1f))
+                VideoPreview(candidate,if(case.candidate.isSubmittedMedia) "Submitted candidate" else "Candidate",Modifier.weight(1f))
             }
         }
     } ?: Text(error ?: "Loading private server videos…",style=MaterialTheme.typography.bodySmall)

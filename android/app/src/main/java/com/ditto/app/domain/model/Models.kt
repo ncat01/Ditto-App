@@ -138,9 +138,12 @@ data class CandidateMatch(
     val attributionPresent: Boolean = false,
     val permissionGranted: Boolean = false
 ) {
+    val isSubmittedMedia: Boolean
+        get() = platform == "Submitted evidence" || platform == "Submitted media"
+
     /** Blended similarity shown as the headline "% similarity" figure. */
     val overallSimilarity: Double
-        get() = if(platform == "Submitted evidence") hashSimilarity else (hashSimilarity * 0.45) + (visualSimilarity * 0.40) + (captionSimilarity * 0.15)
+        get() = if(isSubmittedMedia) hashSimilarity else (hashSimilarity * 0.45) + (visualSimilarity * 0.40) + (captionSimilarity * 0.15)
 }
 
 data class VerificationResult(

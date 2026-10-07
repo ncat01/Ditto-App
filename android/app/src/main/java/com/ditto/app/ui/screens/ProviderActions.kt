@@ -316,17 +316,72 @@ fun AccountSecurityCard() {
 fun ContentDiscoveryCard(contentId: String, onOpenCase: (String) -> Unit) {
     val context=LocalContext.current
     val scope=rememberCoroutineScope()
-    var busy by remember {mutableStateOf(false)}
-    var message by remember {mutableStateOf<String?>(null)}
-    var results by remember {mutableStateOf<List<JSONObject>>(emptyList())}
-    var confirmSearch by remember {mutableStateOf(false)}
-    var configured by remember {mutableStateOf(false)}
+    val lifecycleOwner=LocalLifecycleOwner.current
+    var busy by remember(contentId) {mutableStateOf(false)}
+    var message by remember(contentId) {mutableStateOf<String?>(null)}
+    var results by remember(contentId) {mutableStateOf<List<JSONObject>>(emptyList())}
+    var confirmSearch by remember(contentId) {mutableStateOf(false)}
+    var configured by remember(contentId) {mutableStateOf(false)}
     var currentStep by remember(contentId) {mutableStateOf<String?>(null)}
     var completedCaseId by remember(contentId) {mutableStateOf<String?>(null)}
+    var searchJobId by remember(contentId) {mutableStateOf<String?>(null)}
+    var restoringSearch by remember(contentId) {mutableStateOf(true)}
+    fun showSearchResult(result: JSONObject) {
+        val rows=result.optJSONArray("results") ?: JSONArray()
+        results=(0 until rows.length()).map {rows.getJSONObject(it)}
+        currentStep="Search complete"
+        message=if(results.isEmpty()) "No publicly indexed match was found. You can still compare a suspected copy directly."
+            else result.optString("notice").ifBlank {"Open each source to review the account, post date and permission."}
+        busy=false
+    }
+    fun acceptSearchStatus(receipt: JSONObject): Boolean {
+        when(receipt.optString("state")) {
+            "complete" -> {
+                val result=receipt.optJSONObject("result")
+                if(result!=null) showSearchResult(result)
+                else {busy=false;currentStep="Search stopped";message="The saved search result is unavailable. Try again."}
+                searchJobId=null
+                return true
+            }
+            "error", "unknown", "cancelled" -> {
+                busy=false;currentStep="Search stopped"
+                message=receipt.optString("error").takeIf {it.isNotBlank() && it!="null"}
+                    ?: "This search could not finish. No message was sent."
+                searchJobId=null
+                return true
+            }
+            else -> {
+                currentStep=if(receipt.optString("state")=="queued") "Search queued" else "Searching for exact and visually similar matches"
+                message=null
+                busy=true
+                return false
+            }
+        }
+    }
     LaunchedEffect(contentId) {
         try {configured=withContext(Dispatchers.IO) {JSONObject(connectedApi(context).request("api/discovery/status")).optBoolean("configured")}}
         catch(e:CancellationException) {throw e}
         catch(e:Exception) {message=e.message}
+        try {
+            val receipt=withContext(Dispatchers.IO) {JSONObject(connectedApi(context).request("api/discovery/$contentId/web-search-job"))}
+            val existingId=receipt.optString("jobId").takeIf {it.isNotBlank() && it!="null"}
+            if(existingId!=null && !acceptSearchStatus(receipt)) searchJobId=existingId
+        } catch(e:CancellationException) {throw e}
+        catch(e:Exception) {message="Could not restore a previous search. Check your connection before searching again."}
+        finally {restoringSearch=false}
+    }
+    LaunchedEffect(contentId,searchJobId,lifecycleOwner) {
+        val jobId=searchJobId ?: return@LaunchedEffect
+        lifecycleOwner.lifecycle.repeatOnLifecycle(Lifecycle.State.STARTED) {
+            while(isActive) {
+                try {
+                    val receipt=withContext(Dispatchers.IO) {JSONObject(connectedApi(context).request("api/jobs/$jobId"))}
+                    if(acceptSearchStatus(receipt)) return@repeatOnLifecycle
+                } catch(e:CancellationException) {throw e}
+                catch(e:Exception) {message="Your search is saved. Connection unavailable; checking again automatically."}
+                delay(1500)
+            }
+        }
     }
     val picker=rememberLauncherForActivityResult(ActivityResultContracts.PickVisualMedia()) { uri ->
         if(uri!=null) {
@@ -363,9 +418,10 @@ fun ContentDiscoveryCard(contentId: String, onOpenCase: (String) -> Unit) {
         if(busy) {
             LinearProgressIndicator(modifier=Modifier.fillMaxWidth())
             currentStep?.let {Text(it,style=MaterialTheme.typography.bodySmall)}
+            if(searchJobId!=null) Text("You can return Home; your search will continue.",style=MaterialTheme.typography.bodySmall)
         } else currentStep?.let {Text(it,style=MaterialTheme.typography.labelMedium)}
-        SecondaryButton(text="Compare a suspected repost",enabled=!busy,modifier=Modifier.fillMaxWidth(),onClick={picker.launch(PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageAndVideo))})
-        SecondaryButton(text=if(busy) "Searching..." else "Search for matching posts",enabled=!busy && configured,modifier=Modifier.fillMaxWidth(),onClick={confirmSearch=true})
+        SecondaryButton(text="Compare a suspected repost",enabled=!busy && !restoringSearch,modifier=Modifier.fillMaxWidth(),onClick={picker.launch(PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageAndVideo))})
+        SecondaryButton(text=if(searchJobId!=null) "Search in progress" else if(restoringSearch) "Checking previous search..." else "Search for matching posts",enabled=!busy && !restoringSearch && configured,modifier=Modifier.fillMaxWidth(),onClick={confirmSearch=true})
         if(!configured) Text("Web search is currently unavailable. Candidate comparison is available for your uploaded originals.",style=MaterialTheme.typography.bodySmall)
         message?.let {Text(it,style=MaterialTheme.typography.bodySmall)}
         completedCaseId?.let { caseId ->
@@ -392,14 +448,27 @@ fun ContentDiscoveryCard(contentId: String, onOpenCase: (String) -> Unit) {
             currentStep="Checking exact matches and similar frames"
             scope.launch {
                 try {
-                    val result=withContext(Dispatchers.IO) {JSONObject(connectedApi(context).awaitResult("api/discovery/$contentId/web-search","{\"consent_to_search_provider\":true}"))}
-                    val rows=result.getJSONArray("results")
-                    results=(0 until rows.length()).map {rows.getJSONObject(it)}
-                    currentStep="Search complete"
-                    message=if(results.isEmpty()) "No publicly indexed match was found. You can still compare a suspected copy directly." else result.getString("notice")
+                    val requestId=java.util.UUID.randomUUID().toString().replace("-","")
+                    val receipt=withContext(Dispatchers.IO) {
+                        JSONObject(connectedApi(context).request("api/discovery/$contentId/web-search-job",JSONObject()
+                            .put("consent_to_search_provider",true).put("request_id",requestId).toString()))
+                    }
+                    val jobId=receipt.getString("jobId")
+                    require(jobId.matches(Regex("[a-zA-Z0-9._-]{1,36}"))) {"Invalid search receipt."}
+                    if(!acceptSearchStatus(receipt)) searchJobId=jobId
                 } catch(e:CancellationException) {throw e}
-                catch(e:Exception) {currentStep="Search stopped";message=e.message ?: "Search unavailable."}
-                finally {busy=false}
+                catch(e:Exception) {
+                    // A lost response can still mean the server accepted the search.
+                    // Check its saved receipt without submitting or charging again.
+                    try {
+                        val saved=withContext(Dispatchers.IO) {JSONObject(connectedApi(context).request("api/discovery/$contentId/web-search-job"))}
+                        val jobId=saved.optString("jobId").takeIf {it.isNotBlank() && it!="null"}
+                        if(jobId!=null) {if(!acceptSearchStatus(saved)) searchJobId=jobId}
+                        else {currentStep="Search stopped";message=e.message ?: "Search unavailable."}
+                    } catch(cancelled:CancellationException) {throw cancelled}
+                    catch(statusError:Exception) {currentStep="Search status unavailable";message="Could not confirm whether the search started. Reopen this original to check its saved status before trying again."}
+                }
+                finally {if(searchJobId==null) busy=false}
             }
         }) {Text("Search")}})
 }

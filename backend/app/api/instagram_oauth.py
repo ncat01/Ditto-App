@@ -17,7 +17,7 @@ router=APIRouter(prefix='/api/integrations/instagram',tags=['Instagram connectio
 COOKIE='ditto_ig_browser'
 
 def browser_page(message,status=200):
-    response=HTMLResponse('<!doctype html><html><head><meta name="viewport" content="width=device-width, initial-scale=1"><title>Ditto Instagram connection</title></head><body style="font:18px system-ui;background:#fffaf2;color:#343034;padding:40px"><h1>Ditto</h1><p>'+html.escape(message)+'</p><p>Return to Ditto and tap Refresh connection.</p></body></html>',status_code=status,headers={'Cache-Control':'no-store','Referrer-Policy':'no-referrer','Content-Security-Policy':"default-src 'none'; style-src 'unsafe-inline'; frame-ancestors 'none'"})
+    response=HTMLResponse('<!doctype html><html><head><meta name="viewport" content="width=device-width, initial-scale=1"><title>Ditto Instagram connection</title></head><body style="font:18px system-ui;background:#fffaf2;color:#343034;padding:40px"><h1>Ditto</h1><p>'+html.escape(message)+'</p><p>Return to Ditto. Your connection status updates automatically.</p></body></html>',status_code=status,headers={'Cache-Control':'no-store','Referrer-Policy':'no-referrer','Content-Security-Policy':"default-src 'none'; style-src 'unsafe-inline'; frame-ancestors 'none'"})
     response.delete_cookie(COOKIE,path='/api/integrations/instagram');return response
 
 @router.post('/connect')

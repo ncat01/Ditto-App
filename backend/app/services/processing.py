@@ -1,13 +1,14 @@
-"""PostgreSQL-backed comparisons; commit case/results atomically with job completion.
+"""PostgreSQL-backed jobs; commit comparison cases/results atomically.
 
 Workers hold a row lock until commit. A killed process rolls back the claim so
 another worker can retry the deterministic comparison without duplicate cases.
-No external message is sent by this processor.
+Email and reverse searches commit attempt receipts before external provider work.
+Reverse searches use their own worker so they do not delay comparisons.
 """
 import uuid
 from pathlib import Path
 from datetime import datetime
-from sqlalchemy import select
+from sqlalchemy import select, or_
 from app.database.db import SessionLocal
 from app.config import get_settings
 from app.models.jobs import ProcessingJob, CandidateMedia
@@ -25,15 +26,23 @@ def private_path(user_id, value):
     return path
 
 
-def process_next():
+def process_next(include_search=True):
     with SessionLocal() as db:
-        job = db.scalar(select(ProcessingJob).where(ProcessingJob.state == 'queued')
-                        .order_by(ProcessingJob.created_at).with_for_update(skip_locked=True).limit(1))
+        statement = select(ProcessingJob).where(ProcessingJob.state == 'queued')
+        if not include_search:
+            kind = ProcessingJob.payload['kind'].as_string()
+            statement = statement.where(or_(kind != 'web_search', kind.is_(None)))
+        job = db.scalar(statement.order_by(ProcessingJob.created_at)
+                        .with_for_update(skip_locked=True).limit(1))
         if not job:
             return False
         if job.payload.get('kind') == 'email':
             from app.services.email_outreach import deliver
             deliver(db,job)
+            return True
+        if job.payload.get('kind') == 'web_search':
+            from app.services.search_jobs import deliver
+            deliver(db, job)
             return True
         try:
             original = db.get(Content, job.payload['originalId'])
@@ -49,7 +58,7 @@ def process_next():
                 score = similarity(ah[0],bh[0])
             identity = 'DIT-'+uuid.uuid4().hex[:12]
             candidate = CandidateMatch(id=uuid.uuid4().hex,content_id=original.id,
-                platform='Submitted media',account_name='Submitted candidate',account_handle='',
+                platform='Submitted evidence',account_name='Submitted candidate',account_handle='',
                 source_url='',hash_similarity=score,visual_similarity=score,
                 transform_note='Visual similarity comparison. Permission, credit and infringement require human review.')
             db.add(candidate);db.flush()
@@ -78,11 +87,49 @@ def process_next():
         return True
 
 
+def process_search_next():
+    with SessionLocal() as db:
+        job = db.scalar(select(ProcessingJob).where(
+            ProcessingJob.state == 'queued',
+            ProcessingJob.payload['kind'].as_string() == 'web_search')
+            .order_by(ProcessingJob.created_at).with_for_update(skip_locked=True).limit(1))
+        if not job:
+            return False
+        from app.services.search_jobs import deliver
+        deliver(db, job)
+        return True
+
+
 def run(stop):
     import logging
+    import threading
+    import time
+    from app.services.search_jobs import recover_interrupted
+    with SessionLocal() as db:
+        recover_interrupted(db)
+
+    def search_loop():
+        while not stop.is_set():
+            try:
+                worked = process_search_next()
+            except Exception:
+                logging.getLogger('ditto').error('Search receipt could not be finalized; provider attempt will not be replayed.')
+                worked = False
+            stop.wait(0.2 if worked else 2)
+
+    search_worker = threading.Thread(target=search_loop, daemon=True, name='ditto-search')
+    search_worker.start()
+    next_recovery = time.monotonic() + 30
     while not stop.is_set():
+        if time.monotonic() >= next_recovery:
+            try:
+                with SessionLocal() as db:
+                    recover_interrupted(db)
+            except Exception:
+                logging.getLogger('ditto').error('Interrupted search receipts could not be checked; checking again later.')
+            next_recovery = time.monotonic() + 30
         try:
-            worked = process_next()
+            worked = process_next(include_search=False)
         except Exception:
             logging.getLogger('ditto').error('Processing transaction failed; claim rolled back for retry.')
             worked = False

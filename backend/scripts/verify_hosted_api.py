@@ -7,6 +7,18 @@ import httpx
 from PIL import Image
 
 
+def await_job(client, job_id, headers):
+    for _ in range(240):
+        response = client.get('/api/jobs/'+job_id, headers=headers)
+        assert response.status_code == 200, 'Job receipt unavailable'
+        result = response.json()
+        if result['state'] in ('complete', 'error', 'unknown', 'cancelled'):
+            assert result['state'] == 'complete', 'Job did not complete: '+str(result.get('error'))
+            return result['result']
+        time.sleep(1)
+    raise AssertionError('Job is still processing; check its saved receipt before retrying')
+
+
 def verify(origin, reverse_search=False):
     password = secrets.token_urlsafe(24)
     accounts = []
@@ -38,29 +50,35 @@ def verify(origin, reverse_search=False):
             if reverse_search:
                 status = client.get('/api/discovery/status', headers=owner).json()
                 assert status['configured'] and status['provider'] == 'SerpApi Google Lens'
-                endpoint = '/api/discovery/'+identity+'/web-search'
+                endpoint = '/api/discovery/'+identity+'/web-search-job'
                 assert client.post(endpoint, headers=owner, json={}).status_code == 422
+                assert client.get(endpoint, headers=other).status_code == 404
                 assert client.post(endpoint, headers=other,
                     json={'consent_to_search_provider':True}).status_code == 404
+                request = {'consent_to_search_provider':True, 'request_id':secrets.token_hex(16)}
                 response = client.post(endpoint, headers=owner,
-                    json={'consent_to_search_provider':True}, timeout=120)
-                assert response.status_code == 200, 'Live reverse search failed: '+str(response.status_code)
-                result = response.json()
-                assert result['provider'] == 'SerpApi Google Lens' and result['unitsUsed'] == 1
+                    json=request)
+                assert response.status_code == 202, 'Live reverse search submission failed: '+str(response.status_code)
+                search_job = response.json()['jobId']
+                duplicate = client.post(endpoint, headers=owner, json=request)
+                assert duplicate.status_code == 202 and duplicate.json()['jobId'] == search_job
+                assert client.get('/api/jobs/'+search_job, headers=other).status_code == 404
+                result = await_job(client, search_job, owner)
+                assert result['provider'] == 'SerpApi Google Lens' and result['unitsUsed'] == 2
                 assert all(row['verified'] is False for row in result['results'])
-                print('Live SerpApi image upload/search, consent and isolation: verified')
+                restored = client.get(endpoint, headers=owner).json()
+                assert restored['jobId'] == search_job and restored['state'] == 'complete'
+                assert restored['result'] == result
+                print('Live queued SerpApi search, restored results, consent, duplicate submission and isolation: verified')
                 print('Generated-image leads returned:',len(result['results']))
             response = client.post('/api/discovery/'+identity+'/compare-job', headers=owner,
                 files={'file':('candidate.png',image.getvalue(),'image/png')})
             assert response.status_code == 202
             job = response.json()['jobId']
             assert client.get('/api/jobs/'+job,headers=other).status_code == 404
-            for _ in range(30):
-                result = client.get('/api/jobs/'+job,headers=owner).json()
-                if result['state'] in ('complete','error'): break
-                time.sleep(1)
-            assert result['state'] == 'complete' and result['result']['similarity'] == 1
-            case = result['result']['caseId']
+            result = await_job(client, job, owner)
+            assert result['similarity'] == 1
+            case = result['caseId']
             assert len(client.get('/api/cases',headers=owner).json()) == 1
             assert client.get('/api/cases/'+case+'/candidate-media',headers=owner).content == image.getvalue()
             assert client.get('/api/cases/'+case+'/candidate-media',headers=other).status_code == 404
@@ -82,7 +100,7 @@ if __name__ == '__main__':
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('origin')
     parser.add_argument('--reverse-search', action='store_true',
-        help='Send one generated image to the configured search provider; consumes one search.')
+        help='Send one generated image to the configured search provider; consumes two searches.')
     args = parser.parse_args()
     if not args.origin.startswith('https://'):
         raise SystemExit('HTTPS required')

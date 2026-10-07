@@ -19,6 +19,19 @@ def status(db=Depends(get_db)):
 
 class Consent(BaseModel):
     consent_to_search_provider: bool = False
+    request_id: str | None = None
+
+
+@router.post('/{content_id}/web-search-job', status_code=202)
+def submit_web_search(content_id: str, body: Consent, db=Depends(get_db)):
+    from app.services.search_jobs import enqueue
+    return enqueue(db, content_id, body)
+
+
+@router.get('/{content_id}/web-search-job')
+def latest_web_search(content_id: str, db=Depends(get_db)):
+    from app.services.search_jobs import latest
+    return latest(db, content_id)
 
 @router.post('/{content_id}/web-search')
 def web_search(content_id:str,body:Consent,db=Depends(get_db)):

@@ -49,7 +49,7 @@ app = FastAPI(
     title="Ditto",
     description="An Agentic AI Content Credit System — detection, verification, "
                 "human-approved action, and autonomous follow-up.",
-    version="1.8.7",
+    version="1.8.8",
     docs_url="/docs" if settings.demo_mode else None,
     redoc_url="/redoc" if settings.demo_mode else None,
     openapi_url="/openapi.json" if settings.demo_mode else None,
@@ -87,7 +87,7 @@ async def unhandled(request: Request, exc: Exception) -> JSONResponse:
 def root() -> dict:
     return {
         "name": "Ditto",
-        "version": "1.8.7",
+        "version": "1.8.8",
         "tagline": "Stay on it until it's resolved.",
         "docs": "/docs",
         "health": "/api/health",

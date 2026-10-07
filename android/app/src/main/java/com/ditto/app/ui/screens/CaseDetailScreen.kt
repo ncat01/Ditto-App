@@ -67,7 +67,7 @@ import com.ditto.app.viewmodel.CaseDetailViewModel
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun CaseDetailScreen(caseId: String, onBack: () -> Unit) {
+fun CaseDetailScreen(caseId: String, onBack: () -> Unit, onHome: () -> Unit) {
     val vm: CaseDetailViewModel = viewModel(
         factory = CaseDetailViewModel.factory(caseId),
         key = caseId
@@ -104,9 +104,12 @@ fun CaseDetailScreen(caseId: String, onBack: () -> Unit) {
             )
             Spacer(Modifier.height(18.dp))
             SecondaryButton(text = "Back to cases", onClick = onBack)
+            Spacer(Modifier.height(10.dp))
+            SecondaryButton(text = "Home", onClick = onHome)
         }
         return
     }
+    val submittedMedia = c.candidate.isSubmittedMedia
 
     LazyColumn(
         modifier = Modifier
@@ -117,12 +120,20 @@ fun CaseDetailScreen(caseId: String, onBack: () -> Unit) {
     ) {
         // ---------- header ----------
         item {
-            Text(
-                "← Back",
-                style = MaterialTheme.typography.labelMedium,
-                color = DittoColors.SecondaryBlue,
-                modifier = Modifier.clickable(onClick = onBack)
-            )
+            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                Text(
+                    "← Back",
+                    style = MaterialTheme.typography.labelMedium,
+                    color = DittoColors.SecondaryBlue,
+                    modifier = Modifier.clickable(onClick = onBack)
+                )
+                Text(
+                    "Home",
+                    style = MaterialTheme.typography.labelMedium,
+                    color = DittoColors.SecondaryBlue,
+                    modifier = Modifier.clickable(onClick = onHome)
+                )
+            }
             Spacer(Modifier.height(14.dp))
             Eyebrow("Case ${c.id}")
             Spacer(Modifier.height(6.dp))
@@ -223,20 +234,11 @@ fun CaseDetailScreen(caseId: String, onBack: () -> Unit) {
 
                 MetricBar("Content similarity", c.candidate.overallSimilarity)
                 Spacer(Modifier.height(12.dp))
-                MetricBar("Visual match", c.candidate.visualSimilarity)
-                Spacer(Modifier.height(12.dp))
-                MetricBar("Hash similarity", c.candidate.hashSimilarity)
-                Spacer(Modifier.height(12.dp))
-                if(c.candidate.platform != "Submitted evidence") MetricBar("Caption similarity", c.candidate.captionSimilarity)
-                else Text("Caption, account identity and permission have not been verified.",style=MaterialTheme.typography.bodySmall)
-                c.verification?.let {
+                if (!submittedMedia) {
+                    MetricBar("Visual match", c.candidate.visualSimilarity)
                     Spacer(Modifier.height(12.dp))
-                    MetricBar(
-                        "Rule confidence (uncalibrated)",
-                        it.confidence,
-                        barColor = DittoColors.PrimaryBlue
-                    )
-                }
+                    MetricBar("Caption similarity", c.candidate.captionSimilarity)
+                } else Text("Caption, account identity and permission have not been verified.",style=MaterialTheme.typography.bodySmall)
 
                 Spacer(Modifier.height(14.dp))
                 ExpandRow(
@@ -253,14 +255,14 @@ fun CaseDetailScreen(caseId: String, onBack: () -> Unit) {
                         Spacer(Modifier.height(10.dp))
                         MetaRow("Platform", c.candidate.platform)
                         MetaRow("Account", "${c.candidate.accountName} ${c.candidate.accountHandle}")
-                        MetaRow("Followers", if(c.candidate.platform == "Submitted evidence") "Unknown" else formatFollowers(c.candidate.followerCount))
+                        MetaRow("Followers", if(submittedMedia) "Unknown" else formatFollowers(c.candidate.followerCount))
                         MetaRow(
                             "Monetization",
-                            if(c.candidate.platform == "Submitted evidence") "Unknown" else if (c.candidate.monetized) "Indicators present" else "None detected"
+                            if(submittedMedia) "Unknown" else if (c.candidate.monetized) "Indicators present" else "None detected"
                         )
                         MetaRow("Source", c.candidate.sourceUrl)
                         MetaRow("Caption", c.candidate.caption)
-                        MetaRow("Detected post", if(c.candidate.platform == "Submitted evidence") "Posting date unknown" else relativeTime(c.candidate.postedAt))
+                        MetaRow("Detected post", if(submittedMedia) "Posting date unknown" else relativeTime(c.candidate.postedAt))
                         MetaRow("Original content", c.contentTitle)
                         MetaRow("Discovered", relativeTime(c.candidate.discoveredAt))
                     }
@@ -271,18 +273,12 @@ fun CaseDetailScreen(caseId: String, onBack: () -> Unit) {
         // ---------- verification agent ----------
         c.verification?.let { v ->
             item {
-                SectionHeading("Verification Agent")
+                SectionHeading("Comparison review")
             }
             item {
                 DittoCard {
                     Row(verticalAlignment = Alignment.CenterVertically) {
                         ClassificationPill(v.classification)
-                        Spacer(Modifier.width(8.dp))
-                        Text(
-                            "${(v.confidence * 100).toInt()}% rule confidence",
-                            style = MaterialTheme.typography.titleSmall,
-                            color = DittoColors.TextPrimary
-                        )
                     }
                     Spacer(Modifier.height(12.dp))
                     Text(
@@ -322,12 +318,6 @@ fun CaseDetailScreen(caseId: String, onBack: () -> Unit) {
                                 style = MaterialTheme.typography.bodySmall,
                                 color = DittoColors.TextSecondary
                             )
-                            Spacer(Modifier.height(10.dp))
-                            Text(
-                                v.engine,
-                                style = MaterialTheme.typography.bodySmall,
-                                color = DittoColors.TextTertiary
-                            )
                         }
                     }
                 }
@@ -336,7 +326,7 @@ fun CaseDetailScreen(caseId: String, onBack: () -> Unit) {
 
         // ---------- action planning agent ----------
         c.plan?.let { plan ->
-            item { SectionHeading("Action-Planning Agent") }
+            item { SectionHeading("Suggested next step") }
             item {
                 DittoCard {
                     Eyebrow(
@@ -381,12 +371,6 @@ fun CaseDetailScreen(caseId: String, onBack: () -> Unit) {
                             }
                         }
                     }
-                    Spacer(Modifier.height(10.dp))
-                    Text(
-                        plan.engine,
-                        style = MaterialTheme.typography.bodySmall,
-                        color = DittoColors.TextTertiary
-                    )
                 }
             }
 

@@ -9,6 +9,37 @@ from app.config import get_settings
 
 class SearchUnavailable(RuntimeError): pass
 
+
+def result_items(row, result_key):
+    """A successful empty Google response is not a provider outage."""
+    if not isinstance(row, dict):
+        raise ValueError('Invalid search response')
+    metadata = row.get('search_metadata', {})
+    if not isinstance(metadata, dict):
+        raise ValueError('Invalid search metadata')
+    status = metadata.get('status')
+    if status is not None and status != 'Success':
+        raise SearchUnavailable('Reverse search unavailable. Try again later.')
+    error = row.get('error')
+    if error is not None and not isinstance(error, str):
+        raise ValueError('Invalid search error')
+    empty_messages = {
+        "Google hasn't returned any results for this query.",
+        "Google Lens hasn't returned any results for this query.",
+        "Google Reverse Image hasn't returned any results for this query.",
+    }
+    if error and not (status == 'Success' and error.strip() in empty_messages):
+        raise SearchUnavailable('Reverse search unavailable. Try again later.')
+    items = row.get(result_key)
+    if items is None:
+        if status == 'Success':
+            return []
+        raise ValueError('Missing search results')
+    if not isinstance(items, list):
+        raise ValueError('Invalid search results')
+    return items
+
+
 def query_images(path,kind):
     encoded=[]
     def append(image):
@@ -72,8 +103,7 @@ def search(images):
                         'safe':'active','hl':'en','api_key':key})
                     if response.status_code!=200:raise SearchUnavailable('Reverse search unavailable. Check provider quota or try again later.')
                     row=response.json()
-                    if 'error' in row:raise SearchUnavailable('Reverse search unavailable. Try again later.')
-                    for item in row.get(result_key,[])[:50]:
+                    for item in result_items(row,result_key)[:50]:
                         url=safe_url(item.get('link'))
                         if not url:continue
                         source=str(item.get('source','')).strip()[:128]

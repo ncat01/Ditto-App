@@ -146,7 +146,13 @@ fun DittoAppRoot() {
                     val caseId = entry.arguments?.getString("caseId").orEmpty()
                     CaseDetailScreen(
                         caseId = caseId,
-                        onBack = { navController.popBackStack() }
+                        onBack = { navController.popBackStack() },
+                        onHome = {
+                            navController.navigate(Routes.HOME) {
+                                popUpTo(Routes.HOME) { inclusive = false }
+                                launchSingleTop = true
+                            }
+                        }
                     )
                 }
                 composable(Routes.FOLLOW_UP) {

@@ -10,14 +10,14 @@ plugins {
 
 android {
     namespace = "com.ditto.app"
-    compileSdk = 35
+    compileSdk = 36
 
     defaultConfig {
         applicationId = "com.ditto.app"
         minSdk = 26
-        targetSdk = 35
-        versionCode = 16
-        versionName = "1.8.7"
+        targetSdk = 36
+        versionCode = 17
+        versionName = "1.8.8"
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
 
         // Backend base URL is injected at build time, never hardcoded in source.

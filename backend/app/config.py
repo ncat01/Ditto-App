@@ -57,6 +57,10 @@ class Settings(BaseSettings):
         return bool(self.google_cloud_api_key.get_secret_value()) and not self.demo_mode
 
     @property
+    def has_live_discovery(self) -> bool:
+        return bool(self.serpapi_api_key.get_secret_value()) and not self.demo_mode
+
+    @property
     def has_meta(self) -> bool:
         return bool(self.meta_access_token.get_secret_value())
 
@@ -71,7 +75,7 @@ class Settings(BaseSettings):
             "ai_drafting": (f"Gemini ({self.gemini_model}): key configured; connectivity not verified by health" if self.gemini_api_key.get_secret_value() else "Gemini: key not configured"),
             "instagram": ("Instagram OAuth: app secret configured; live sign-in not verified by health" if self.instagram_app_secret.get_secret_value() else "Instagram OAuth: app secret not configured"),
             "verification":"Measured similarity only; infringement and manipulation classifiers unavailable",
-            "discovery":("Google web-image search configured; results require review" if self.has_vision else
+            "discovery":("SerpApi Google Lens search configured; results require review" if self.has_live_discovery else
                          "No live discovery provider configured; submitted media comparison available"),
             "own_content":"Private uploads and per-user Instagram OAuth import; each user must authorize their own connection",
             "outreach":"SMTP configured; recipient and evidence confirmation required" if self.outreach_is_live else "Email sender unavailable",

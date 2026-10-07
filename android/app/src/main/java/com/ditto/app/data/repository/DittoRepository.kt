@@ -24,7 +24,7 @@ data class ScanProgress(
 )
 
 /**
- * The single contract the UI depends on. [LocalDittoRepository] serves Demo Mode
+ * The single contract the UI depends on. The server supplies account data
  * entirely on-device; a Retrofit-backed implementation serves the FastAPI backend.
  */
 interface DittoRepository {
@@ -48,8 +48,6 @@ interface DittoRepository {
     /** Cases whose next weekly re-check is due (report §21). */
     suspend fun casesAwaitingFollowUp(): List<Case>
 
-    suspend fun seedDemoData(force: Boolean): DittoResult<Int>
-    suspend fun resetDemoData(): DittoResult<Int>
 
     val verificationEngineName: String
     val discoveryProviderName: String

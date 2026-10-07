@@ -10,6 +10,8 @@ from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError
 from app.database.db import SessionLocal
 from app.models.tables import User, AuthSession
+from app.models.refresh_tokens import RefreshFamily, RefreshToken
+from app.services.passwords import hash_password, verify_password, needs_upgrade
 
 router = APIRouter(prefix="/api/auth", tags=["Authentication"])
 class Credentials(BaseModel):
@@ -18,7 +20,7 @@ class Credentials(BaseModel):
     display_name: str = Field(default="Creator", min_length=1, max_length=128)
 
 def password_hash(password, salt):
-    return hashlib.pbkdf2_hmac("sha256", password.encode(), bytes.fromhex(salt), 210000).hex()
+    return hash_password(password)
 
 def current_user(request: Request):
     token = request.headers.get("Authorization", "").removeprefix("Bearer ")
@@ -28,12 +30,50 @@ def current_user(request: Request):
             raise HTTPException(401, "Sign in required or session expired")
         return session.user_id
 
-def issue(db, user):
-    token = secrets.token_urlsafe(32)
-    expires = datetime.now(timezone.utc)+timedelta(days=7)
-    db.add(AuthSession(token_hash=hashlib.sha256(token.encode()).hexdigest(), user_id=user.id, expires_at=expires))
+def issue(db, user, family=None):
+    token, refresh = secrets.token_urlsafe(32), secrets.token_urlsafe(48)
+    now = datetime.now(timezone.utc).replace(tzinfo=None)
+    expires = now + timedelta(minutes=15)
+    if family is None:
+        family = RefreshFamily(id=uuid.uuid4().hex, user_id=user.id,
+                               expires_at=now+timedelta(days=30), revoked=False)
+        db.add(family); db.flush()
+    db.add(AuthSession(token_hash=hashlib.sha256(token.encode()).hexdigest(),
+                       user_id=user.id, family_id=family.id, expires_at=expires))
+    db.add(RefreshToken(token_hash=hashlib.sha256(refresh.encode()).hexdigest(),
+                        family_id=family.id, user_id=user.id, used=False, expires_at=family.expires_at))
     db.commit()
-    return {"token":token,"expiresAt":expires,"user":{"id":user.id,"displayName":user.display_name,"email":user.email}}
+    return {"token":token,"expiresAt":expires.replace(tzinfo=timezone.utc),
+            "refreshToken":refresh,"refreshExpiresAt":family.expires_at.replace(tzinfo=timezone.utc),
+            "user":{"id":user.id,"displayName":user.display_name,"email":user.email}}
+
+class RefreshRequest(BaseModel):
+    refreshToken: str = Field(min_length=32, max_length=256)
+
+@router.post('/refresh')
+def refresh(body: RefreshRequest):
+    from sqlalchemy import delete, update
+    with SessionLocal() as db:
+        digest = hashlib.sha256(body.refreshToken.encode()).hexdigest()
+        row = db.scalar(select(RefreshToken).where(RefreshToken.token_hash == digest).with_for_update())
+        if row is None:
+            raise HTTPException(401, 'Sign in again.')
+        family = db.scalar(select(RefreshFamily).where(RefreshFamily.id == row.family_id).with_for_update())
+        now = datetime.now(timezone.utc).replace(tzinfo=None)
+        if not family or family.revoked or row.expires_at <= now:
+            raise HTTPException(401, 'Sign in again.')
+        claimed = db.execute(update(RefreshToken).where(RefreshToken.token_hash == digest,
+                                                       RefreshToken.used == False).values(used=True))
+        if claimed.rowcount != 1:
+            family.revoked = True
+            db.execute(delete(AuthSession).where(AuthSession.family_id == family.id))
+            db.commit()
+            raise HTTPException(401, 'Session reuse detected. Sign in again.')
+        user = db.get(User, row.user_id)
+        if user is None:
+            raise HTTPException(401, 'Sign in again.')
+        db.execute(delete(AuthSession).where(AuthSession.family_id == family.id))
+        return issue(db, user, family)
 
 @router.post("/signup", status_code=201)
 def signup(body: Credentials, request: Request):
@@ -59,9 +99,10 @@ def login(body: Credentials, request: Request):
     consume("login:" + (request.client.host if request.client else "unknown") + ":" + body.email.strip().lower(), 10, 900)
     with SessionLocal() as db:
         user = db.scalar(select(User).where(User.email==body.email.strip().lower()))
-        computed = password_hash(body.password,user.salt if user and user.salt else "00"*32)
-        if not user or not user.salt or not hmac.compare_digest(user.password_hash,computed):
+        if not verify_password(body.password, user.password_hash if user else None, user.salt if user else None):
             raise HTTPException(401,"Email or password is incorrect")
+        if needs_upgrade(user.password_hash):
+            user.password_hash = hash_password(body.password)
         return issue(db,user)
 
 @router.get("/me")
@@ -76,7 +117,14 @@ def logout(request: Request, user_id=Depends(current_user)):
     token=request.headers.get("Authorization","").removeprefix("Bearer ")
     with SessionLocal() as db:
         session=db.get(AuthSession,hashlib.sha256(token.encode()).hexdigest())
-        if session: db.delete(session); db.commit()
+        if session:
+            from sqlalchemy import delete
+            if session.family_id:
+                family = db.get(RefreshFamily, session.family_id)
+                if family: family.revoked = True
+                db.execute(delete(AuthSession).where(AuthSession.family_id == session.family_id))
+            else: db.delete(session)
+            db.commit()
     return {"loggedOut":True}
 
 
@@ -142,6 +190,7 @@ def reset_password(body: PasswordReset):
         user.password_hash = password_hash(body.password, user.salt)
         db.execute(delete(AccountToken).where(AccountToken.user_id == user.id, AccountToken.purpose == "reset"))
         db.execute(delete(AuthSession).where(AuthSession.user_id == user.id))
+        for family in db.scalars(select(RefreshFamily).where(RefreshFamily.user_id == user.id)): family.revoked=True
         db.commit()
     return {'message': 'Password updated. Sign in again on your devices.'}
 
@@ -187,7 +236,7 @@ def delete_account(body: DeleteAccount, user_id=Depends(current_user)):
     consume('delete:' + user_id, 5, 900)
     with SessionLocal() as db:
         user = db.get(User, user_id)
-        if not user or not user.salt or not hmac.compare_digest(user.password_hash, password_hash(body.password, user.salt)):
+        if not user or not verify_password(body.password, user.password_hash, user.salt):
             raise HTTPException(401, 'Password is incorrect.')
         delete_records(db, user_id)
     purge_media()

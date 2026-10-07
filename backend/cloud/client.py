@@ -107,11 +107,18 @@ class Client:
         return result
 
     def increment(self, table, row_id, column, tx=None, value=1):
+        # Transactional increments may return a staged partial row, including
+        # for a nonexistent ID. Verify existence and privacy before staging.
+        existing = self.get(table, row_id, tx)
         body = {'value': value}
         if tx:
             body['transactionId'] = tx
         result = self.request('PATCH', self.base(table) + '/' + ident(row_id) +
                               '/' + ident(column) + '/increment', json=body)
+        if tx and '$permissions' not in result:
+            if result.get('$id') != row_id:
+                raise CloudError()
+            result = {**existing, **result}
         self.private(result)
         return result
 

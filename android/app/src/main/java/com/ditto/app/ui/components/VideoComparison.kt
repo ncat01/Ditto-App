@@ -9,7 +9,6 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.viewinterop.AndroidView
-import com.ditto.app.data.demo.VideoCorpus
 import com.ditto.app.domain.model.Case
 
 @Composable
@@ -30,24 +29,7 @@ fun VideoPreview(uri: String, title: String, modifier: Modifier = Modifier) {
 
 @Composable
 fun VideoComparison(case: Case) {
-    val context=LocalContext.current
-    if(com.ditto.app.core.BackendConnection(context).enabled()) {
-        ServerVideoComparison(case)
-        return
-    }
-    val corpus=remember { VideoCorpus(context) }
-    val kind=when(case.candidate.id) { "cand_001"->"crop";"cand_002"->"caption";"cand_003"->"unrelated";"cand_004"->"resize";"cand_005"->"fake_endorsement";"cand_007"->"credited";"cand_008"->"authorized";"cand_009"->"ambiguous";else->"watermark" }
-    val original=remember(case.id) { Uri.fromFile(corpus.asset("original_${case.contentPaletteSeed}.mp4")).toString() }
-    val copy=remember(case.id) { Uri.fromFile(corpus.asset("${case.candidate.paletteSeed}_${kind}.mp4")).toString() }
-    if(case.candidate.id=="cand_005") {
-        Text("SIMULATED ALTERED SPEECH",style=MaterialTheme.typography.titleSmall)
-        Text("Authored original script: ‘I do not endorse this skincare product.’\nAuthored candidate script: ‘I recommend this skincare product.’\nThese are demo labels, not extracted transcripts. The abstract video has no person's likeness or speech. ASR, face embeddings and manipulation detection are unavailable.",style=MaterialTheme.typography.bodySmall)
-    }
-    Row(horizontalArrangement=Arrangement.spacedBy(10.dp)) {
-        VideoPreview(original,"Original",Modifier.weight(1f))
-        VideoPreview(copy,"Candidate • demo",Modifier.weight(1f))
-    }
-    Text("Samples at 0%, 25%, 50%, 75%, 100% of the clip. Attribution: ${if(case.candidate.attributionPresent) "credit present" else "not found in demo metadata"}. Permission: ${if(case.candidate.permissionGranted) "authorized in demo registry" else "unknown"}. Generated demo assets.",style=MaterialTheme.typography.bodySmall)
+    ServerVideoComparison(case)
 }
 
 @Composable
@@ -59,7 +41,7 @@ private fun ServerVideoComparison(case: Case) {
     LaunchedEffect(case.id) {
         try { clips=kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
             val session=com.ditto.app.core.BackendConnection(context).session() ?: error("Sign in again to view private media.")
-            val api=com.ditto.app.core.BackendApi(session.endpoint,session.token)
+            val api=com.ditto.app.core.BackendApi(session.endpoint,session.token) { com.ditto.app.core.BackendConnection(context).accessToken(session.userId) }
             isImage=org.json.JSONObject(api.request("api/cases/${case.id}")).getJSONObject("candidate").optString("mediaKind")=="image"
             val scope=java.security.MessageDigest.getInstance("SHA-256").digest((session.endpoint+session.userId).toByteArray()).joinToString("") { "%02x".format(it) }
             val extension=if(isImage) "image" else "mp4"
@@ -79,5 +61,5 @@ private fun ServerVideoComparison(case: Case) {
             }
         }
     } ?: Text(error ?: "Loading private server videos…",style=MaterialTheme.typography.bodySmall)
-    Text(if(case.candidate.platform == "Submitted evidence") "Private submitted media. Review attribution, ownership and permission yourself. Similarity does not establish infringement." else "Demonstration evidence. Attribution and permission are sample metadata; no live manipulation detector or extracted transcripts.",style=MaterialTheme.typography.bodySmall)
+    Text("Private evidence. Review ownership, attribution and permission separately. Face and manipulation detectors are unavailable.",style=MaterialTheme.typography.bodySmall)
 }

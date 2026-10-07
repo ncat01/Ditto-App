@@ -28,7 +28,7 @@ class User(Base):
     id: Mapped[str] = mapped_column(String(64), primary_key=True)
     email: Mapped[str | None] = mapped_column(String(254), unique=True, nullable=True)
     salt: Mapped[str | None] = mapped_column(String(64), nullable=True)
-    password_hash: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    password_hash: Mapped[str | None] = mapped_column(String(255), nullable=True)
     display_name: Mapped[str] = mapped_column(String(128))
     handle: Mapped[str] = mapped_column(String(128))
     created_at: Mapped[datetime] = mapped_column(DateTime, default=_now)
@@ -174,6 +174,7 @@ class FollowUpEvent(Base):
 
 class AuthSession(Base):
     __tablename__ = "auth_sessions"
+    family_id: Mapped[str | None] = mapped_column(String(32), nullable=True, index=True)
     token_hash: Mapped[str] = mapped_column(String(64), primary_key=True)
     user_id: Mapped[str] = mapped_column(ForeignKey("users.id"), index=True)
     expires_at: Mapped[datetime] = mapped_column(DateTime, index=True)

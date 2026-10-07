@@ -51,9 +51,7 @@ import com.ditto.app.domain.model.FollowUpOutcome
 import com.ditto.app.domain.model.MessageTone
 import com.ditto.app.ui.components.CaseStateTimeline
 import com.ditto.app.ui.components.ClassificationPill
-import com.ditto.app.ui.components.ComparisonStrip
 import com.ditto.app.ui.components.DittoCard
-import com.ditto.app.ui.components.EvidenceTransform
 import com.ditto.app.ui.components.Eyebrow
 import com.ditto.app.ui.components.HairlineDivider
 import com.ditto.app.ui.components.MetricBar
@@ -482,14 +480,13 @@ fun CaseDetailScreen(caseId: String, onBack: () -> Unit) {
                     }
                     Spacer(Modifier.height(14.dp))
                     Text(
-                        "The weekly re-check runs on a schedule. Run it now to see the agent " +
-                            "decide with a simulated outcome.",
+                        "Follow-up requires an actual response or new evidence from a connected provider.",
                         style = MaterialTheme.typography.bodySmall,
                         color = DittoColors.TextSecondary
                     )
                     Spacer(Modifier.height(14.dp))
                     PrimaryButton(
-                        text = "Simulate weekly follow-up",
+                        text = "Follow-up availability",
                         onClick = { showFollowUp = true },
                         enabled = !ui.busy,
                         modifier = Modifier.fillMaxWidth()

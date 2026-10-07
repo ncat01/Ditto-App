@@ -1,4 +1,4 @@
-"""Google Vision Web Detection on original images or five sampled video frames.
+"""SerpApi Google Lens on original images or five sampled video frames.
 Search returns unverified links; it neither fetches arbitrary URLs nor asserts infringement.
 """
 import base64, io
@@ -42,24 +42,67 @@ def safe_url(value):
     except ValueError:return None
 
 def search(images):
-    key=get_settings().google_cloud_api_key.get_secret_value()
-    if not key:raise SearchUnavailable('Web search is not configured. Original uploads and local comparison remain available.')
-    payload={'requests':[{'image':{'content':image},'features':[{'type':'WEB_DETECTION','maxResults':10}]} for image in images]}
+    key=get_settings().serpapi_api_key.get_secret_value()
+    if not key:raise SearchUnavailable('Web search is not configured by the service operator.')
+    results={}
     try:
         with httpx.Client(timeout=45,follow_redirects=False) as client:
-            response=client.post('https://vision.googleapis.com/v1/images:annotate',headers={'X-Goog-Api-Key':key},json=payload)
-        if response.status_code!=200:raise SearchUnavailable('Web search unavailable. Check the operator?s provider configuration and quota.')
-        rows=response.json()['responses']
-        if len(rows)!=len(images) or any('error' in row for row in rows):raise ValueError()
-        results={}
-        for frame,row in enumerate(rows):
-            web=row.get('webDetection',{})
-            for group,kind in [('pagesWithMatchingImages','matching_page'),('fullMatchingImages','image_match'),('partialMatchingImages','partial_image'),('visuallySimilarImages','visually_similar')]:
-                for item in web.get(group,[])[:10]:
-                    url=safe_url(item.get('url'))
-                    if not url:continue
-                    if url not in results:results[url]={'url':url,'title':str(item.get('pageTitle',''))[:256],'kind':kind,'frames':[],'verified':False}
-                    if frame not in results[url]['frames']:results[url]['frames'].append(frame)
-        return list(results.values())[:50]
+            for frame,encoded in enumerate(images):
+                # SerpApi accepts uploads up to 500 KB. Resize before any upload.
+                with Image.open(io.BytesIO(base64.b64decode(encoded,validate=True))) as source:
+                    image=source.convert('RGB');image.thumbnail((1024,1024))
+                    for quality in (80,65,45,30):
+                        buffer=io.BytesIO();image.save(buffer,format='JPEG',quality=quality)
+                        data=buffer.getvalue()
+                        if len(data)<=490000:break
+                    if len(data)>490000:raise ValueError('Search image too large')
+                uploaded=client.post('https://serpapi.com/image',data={'api_key':key},files={'image':('frame.jpg',data,'image/jpeg')})
+                if uploaded.status_code!=200:raise SearchUnavailable('Search image upload unavailable. Try again later.')
+                image_id=uploaded.json().get('image_id')
+                if not isinstance(image_id,str) or not image_id:raise ValueError()
+                # Google Lens exposes exact and visual matches as separate search
+                # types. The default "all" response is not a reliable source of
+                # exact-match rows, so request both explicitly for every frame.
+                for search_type,result_key,match_type in (
+                    ('exact_matches','exact_matches','exact'),
+                    ('visual_matches','visual_matches','similar'),
+                ):
+                    response=client.get('https://serpapi.com/search.json',params={
+                        'engine':'google_lens','type':search_type,'image_id':image_id,
+                        'safe':'active','hl':'en','api_key':key})
+                    if response.status_code!=200:raise SearchUnavailable('Reverse search unavailable. Check provider quota or try again later.')
+                    row=response.json()
+                    if 'error' in row:raise SearchUnavailable('Reverse search unavailable. Try again later.')
+                    for item in row.get(result_key,[])[:50]:
+                        url=safe_url(item.get('link'))
+                        if not url:continue
+                        source=str(item.get('source','')).strip()[:128]
+                        thumbnail=safe_url(item.get('thumbnail'))
+                        host=(urlsplit(url).hostname or '').lower()
+                        is_instagram=host=='instagram.com' or host.endswith('.instagram.com')
+                        candidate={
+                            'url':url,
+                            'title':str(item.get('title','')).strip()[:256],
+                            'source':source,
+                            'kind':'exact_match' if match_type=='exact' else 'visually_similar',
+                            'matchType':match_type,
+                            'frames':[frame],
+                            'verified':False,
+                            'instagram':is_instagram,
+                        }
+                        if thumbnail:candidate['thumbnail']=thumbnail
+                        existing=results.get(url)
+                        if existing:
+                            if frame not in existing['frames']:existing['frames'].append(frame)
+                            if match_type=='exact':
+                                existing['kind']='exact_match';existing['matchType']='exact'
+                            existing['instagram']=existing.get('instagram',False) or is_instagram
+                        else:results[url]=candidate
+        ranked=sorted(results.values(),key=lambda item:(
+            0 if item['matchType']=='exact' and item.get('instagram') else
+            1 if item['matchType']=='exact' else
+            2 if item.get('instagram') else 3,
+            -len(item['frames']), item['url']))
+        return ranked[:50]
     except (httpx.HTTPError,ValueError,KeyError,TypeError,AttributeError):
         raise SearchUnavailable('Web search did not return usable results. Try again later.') from None

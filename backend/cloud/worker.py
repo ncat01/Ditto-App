@@ -94,7 +94,7 @@ def fingerprint(store, job):
             from app.matching.video import compare
             result = {'originalId': original['$id'], 'candidateId': row['$id'],
                       'similarity': compare(original_value['hashes'], hashes),
-                      'algorithm': 'Measured five-frame pHash' if value['kind'] == 'video' else 'Measured image pHash',
+                      'algorithm': 'Visual similarity analysis',
                       'notice': 'Measured visual similarity only. Review ownership, permission and context before acting.'}
             from cloud.cases import compared_case
             case_id = digest('comparison-case:' + job['$id'])[:32]
@@ -106,7 +106,7 @@ def fingerprint(store, job):
             result = {key: value[key] for key in ('id', 'title', 'kind', 'perceptualHash', 'paletteSeed', 'publishedAt', 'sourcePlatform')}
         store.update(row, value, state='ready', tx=tx)
         store.activity(uid, 'ingestion', 'Media processed',
-                       'Private media fingerprinted; no infringement decision was made.', tx=tx)
+                       'Private media prepared for matching; no infringement decision was made.', tx=tx)
     return result
 
 

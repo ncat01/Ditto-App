@@ -12,10 +12,8 @@ import kotlinx.coroutines.flow.map
 private val Context.dataStore by preferencesDataStore(name = "ditto_settings")
 
 data class DittoSettings(
-    val demoMode: Boolean = true,
-    val presentationMode: Boolean = false,
-    val creatorName: String = "Alex Morgan",
-    val creatorHandle: String = "@alexmorgan.shoots",
+    val creatorName: String = "Your account",
+    val creatorHandle: String = "",
     val autoApproveNever: Boolean = true,
     val notifyOnEscalation: Boolean = true,
     val notifyOnNewCase: Boolean = true,
@@ -31,8 +29,6 @@ data class DittoSettings(
 class SettingsStore(private val context: Context, private val userId: String) {
 
     private class Keys(user: String) {
-        val DEMO_MODE = booleanPreferencesKey("$user:demo_mode")
-        val PRESENTATION_MODE = booleanPreferencesKey("$user:presentation_mode")
         val CREATOR_NAME = stringPreferencesKey("$user:creator_name")
         val CREATOR_HANDLE = stringPreferencesKey("$user:creator_handle")
         val NOTIFY_ESCALATION = booleanPreferencesKey("$user:notify_escalation")
@@ -44,21 +40,13 @@ class SettingsStore(private val context: Context, private val userId: String) {
 
     val settings: Flow<DittoSettings> = context.dataStore.data.map { p: Preferences ->
         DittoSettings(
-            demoMode = p[keys.DEMO_MODE] ?: true,
-            presentationMode = p[keys.PRESENTATION_MODE] ?: false,
-            creatorName = p[keys.CREATOR_NAME] ?: "Alex Morgan",
-            creatorHandle = p[keys.CREATOR_HANDLE] ?: "@alexmorgan.shoots",
+            creatorName = p[keys.CREATOR_NAME] ?: "Your account",
+            creatorHandle = p[keys.CREATOR_HANDLE] ?: "",
             notifyOnEscalation = p[keys.NOTIFY_ESCALATION] ?: true,
             notifyOnNewCase = p[keys.NOTIFY_NEW_CASE] ?: true,
             apiBaseUrl = p[keys.API_BASE_URL] ?: ""
         )
     }
-
-    suspend fun setDemoMode(enabled: Boolean) =
-        context.dataStore.edit { it[keys.DEMO_MODE] = enabled }
-
-    suspend fun setPresentationMode(enabled: Boolean) =
-        context.dataStore.edit { it[keys.PRESENTATION_MODE] = enabled }
 
     suspend fun setCreator(name: String, handle: String) = context.dataStore.edit {
         it[keys.CREATOR_NAME] = name

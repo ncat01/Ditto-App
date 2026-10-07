@@ -1,9 +1,4 @@
-"""Runtime configuration.
-
-Every external provider is optional. A missing key is not an error: the relevant
-capability falls back to its Demo Mode implementation and reports that plainly,
-so the API never claims a live integration it does not have (report §51).
-"""
+"""Runtime configuration. Missing provider credentials mean unavailable capabilities."""
 from __future__ import annotations
 
 from functools import lru_cache
@@ -15,8 +10,8 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 class Settings(BaseSettings):
     model_config = SettingsConfigDict(env_file=".env", extra="ignore", populate_by_name=True)
 
-    database_url: str = Field(default="sqlite:///./ditto.db", validation_alias=AliasChoices("DITTO_DATABASE_URL", "database_url"))
-    demo_mode: bool = Field(default=True, validation_alias=AliasChoices("DITTO_DEMO_MODE", "demo_mode"))
+    database_url: str = Field(default="sqlite:///./ditto.db", validation_alias=AliasChoices("DITTO_DATABASE_URL", "DATABASE_URL", "database_url"))
+    demo_mode: bool = Field(default=False, validation_alias=AliasChoices("DITTO_DEMO_MODE", "demo_mode"))
     media_root: str = Field(default="./private_media", validation_alias=AliasChoices("DITTO_MEDIA_ROOT", "media_root"))
     appwrite_endpoint: str = "https://sgp.cloud.appwrite.io/v1"
     appwrite_project_id: str = "6ac46d45002b91afdd73"
@@ -29,8 +24,12 @@ class Settings(BaseSettings):
     public_base_url: str = ""
     token_encryption_key: SecretStr = SecretStr("")
     meta_api_version: str = Field(default="v25.0", pattern=r"^v[0-9]+\.0$")
+    serpapi_api_key: SecretStr = SecretStr("")
+    search_monthly_unit_limit: int = Field(default=225,ge=0,le=250)
+    search_user_monthly_unit_limit: int = Field(default=10,ge=0,le=250)
     google_cloud_api_key: SecretStr = SecretStr("")
-    vision_monthly_unit_limit: int = Field(default=1000,ge=0,le=100000)
+    vision_monthly_unit_limit: int = Field(default=900,ge=0,le=900)
+    vision_user_monthly_unit_limit: int = Field(default=40,ge=0,le=900)
     meta_ad_library_token: str = ""
     llm_api_key: str = ""
     gemini_api_key: SecretStr = SecretStr("")
@@ -47,6 +46,7 @@ class Settings(BaseSettings):
 
     # Follow-up cadence in days; the scheduler re-evaluates open cases on this interval.
     follow_up_interval_days: int = 7
+    processing_worker_enabled: bool = True
 
     @property
     def has_llm(self) -> bool:
@@ -62,23 +62,22 @@ class Settings(BaseSettings):
 
     @property
     def outreach_is_live(self) -> bool:
-        return False  # No live transport adapter is installed.
+        return bool(self.cloud_email_outreach_enabled and self.smtp_host and
+                    self.smtp_port in (465,587) and self.smtp_from and self.smtp_user and self.smtp_password)
 
     def provider_status(self) -> dict[str, str]:
         """Human-readable status for /api/health, so callers know what is real."""
         return {
             "ai_drafting": (f"Gemini ({self.gemini_model}): key configured; connectivity not verified by health" if self.gemini_api_key.get_secret_value() else "Gemini: key not configured"),
             "instagram": ("Instagram OAuth: app secret configured; live sign-in not verified by health" if self.instagram_app_secret.get_secret_value() else "Instagram OAuth: app secret not configured"),
-            "verification":("Demo Verification Agent (deterministic rules; no LLM called)" if self.demo_mode else
-                            "Deterministic evidence rules; no validated infringement or manipulation classifier"),
-            "discovery":("Demo discovery corpus (synthetic, no live scraping)" if self.demo_mode else
-                         "Google web-image search configured; results require review" if self.has_vision else
+            "verification":"Measured similarity only; infringement and manipulation classifiers unavailable",
+            "discovery":("Google web-image search configured; results require review" if self.has_vision else
                          "No live discovery provider configured; submitted media comparison available"),
             "own_content":"Private uploads and per-user Instagram OAuth import; each user must authorize their own connection",
-            "outreach":"Sandboxed — messages are recorded, never transmitted",
-            "matching":"Measured five-frame pHash (local)",
+            "outreach":"SMTP configured; recipient and evidence confirmation required" if self.outreach_is_live else "Email sender unavailable",
+            "matching":"Visual similarity analysis",
             "media_storage":("Appwrite originals with local hashing copies; connectivity not checked by health" if self.media_storage == "appwrite" else "Private local originals"),
-            "manipulation":"Unavailable; simulated evidence only",
+            "manipulation":"Unavailable; no detector configured",
         }
 
 

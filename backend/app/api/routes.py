@@ -9,11 +9,10 @@ from sqlalchemy.orm import Session
 from app.api import schemas
 from app.config import get_settings
 from app.database.db import get_db
-from app.discovery import corpus
 from app.matching import hasher
 from app.models.enums import CaseState, Classification
 from app.models.tables import ActivityEvent, Case, Content
-from app.services import case_service, seed as seed_service
+from app.services import case_service
 from app.services.state_machine import InvalidTransition
 
 router = APIRouter(prefix="/api")
@@ -170,16 +169,6 @@ def list_content(db: Session = Depends(get_db)) -> list[schemas.ContentOut]:
 # ---------------------------------------------------------------- scan
 
 
-@router.post("/scan", response_model=list[schemas.CaseOut])
-def scan(body: schemas.ScanRequest, db: Session = Depends(get_db)) -> list[schemas.CaseOut]:
-    if not settings.demo_mode: raise HTTPException(503, "Automatic discovery is not available. A live discovery provider must be configured before launch.")
-    from app.services.request_budget import consume
-    consume("scan:" + db.info["user_id"], 30, 3600)
-    try:
-        cases = case_service.scan_content(db, body.contentId)
-    except ValueError as exc:
-        raise HTTPException(status_code=404, detail=str(exc)) from exc
-    return [_case_out(c) for c in cases]
 
 
 # ---------------------------------------------------------------- cases
@@ -212,13 +201,14 @@ def _mutate(fn, *args):
         raise HTTPException(status_code=404, detail=str(exc)) from exc
 
 
-@router.post("/cases/{case_id}/approve", response_model=schemas.CaseOut)
+@router.post("/cases/{case_id}/approve", status_code=202)
 def approve(
     case_id: str, body: schemas.ApproveRequest, db: Session = Depends(get_db)
-) -> schemas.CaseOut:
-    if not settings.demo_mode and not settings.outreach_is_live:
+) -> dict:
+    if not settings.outreach_is_live:
         raise HTTPException(503, 'Live outreach is not connected. No message was sent.')
-    return _mutate(case_service.approve_case, db, case_id, body.editedBody, body.tone)
+    from app.services.email_outreach import enqueue
+    return enqueue(db,case_id,body)
 
 
 @router.post("/cases/{case_id}/reject", response_model=schemas.CaseOut)
@@ -235,13 +225,6 @@ def edit_action(
     return _mutate(case_service.edit_action, db, case_id, body.body, body.tone)
 
 
-@router.post("/cases/{case_id}/simulate-followup", response_model=schemas.CaseOut)
-def simulate_followup(
-    case_id: str, body: schemas.FollowUpRequest, db: Session = Depends(get_db)
-) -> schemas.CaseOut:
-    if not settings.demo_mode:
-        raise HTTPException(409, 'Simulated follow-ups are unavailable outside demo mode.')
-    return _mutate(case_service.run_follow_up, db, case_id, body.outcome)
 
 
 @router.post("/cases/{case_id}/resolve", response_model=schemas.CaseOut)
@@ -305,23 +288,8 @@ def activity(limit: int = 100, db: Session = Depends(get_db)) -> list[schemas.Ac
 # ---------------------------------------------------------------- demo control
 
 
-@router.post("/demo/seed")
-def seed_demo(force: bool = False, db: Session = Depends(get_db)) -> dict:
-    if not settings.demo_mode: raise HTTPException(409, "Sample content unavailable outside demo mode")
-    created = seed_service.seed(db, force=force)
-    return {"casesCreated": created, "corpus": corpus.DISPLAY_NAME}
 
 
-@router.get("/demo/ground-truth")
-def ground_truth() -> dict:
-    """Labelled ground truth for the evaluation harness (report §9)."""
-    if not settings.demo_mode:
-        raise HTTPException(404, 'Sample evaluation data unavailable')
-    return {
-        "matcher": hasher.DISPLAY_NAME,
-        "corpus": corpus.DISPLAY_NAME,
-        "labels": {c.id: c.ground_truth for c in corpus.CANDIDATES},
-    }
 
 @router.get("/content/{content_id}/media")
 def media(content_id: str, db: Session = Depends(get_db)):
@@ -345,35 +313,12 @@ def media(content_id: str, db: Session = Depends(get_db)):
         return Response(data, media_type='video/mp4' if item.kind == 'video' else 'application/octet-stream',
                         headers={'Cache-Control': 'private, no-store', 'X-Content-Type-Options': 'nosniff'})
     path=Path(item.local_uri).resolve()
-    roots=[Path(settings.media_root),Path(__file__).resolve().parents[3]/"demo_data/videos"]
+    roots=[Path(settings.media_root)]
     if not any(path.is_relative_to(root.resolve()) for root in roots) or not path.is_file():
         raise HTTPException(404,"Media unavailable")
     return FileResponse(path,media_type="video/mp4" if item.kind=="video" else "application/octet-stream")
 
-@router.get("/cases/{case_id}/candidate-media")
-def candidate_media(case_id: str, db: Session = Depends(get_db)):
-    """Only the matching generated asset, after checking this case's owner."""
-    if not settings.demo_mode:
-        raise HTTPException(404, 'Sample candidate media unavailable')
-    from pathlib import Path
-    from fastapi.responses import FileResponse
-    case=db.get(Case,case_id)
-    if not case or case.content.user_id!=db.info["user_id"]:
-        raise HTTPException(404,"Case unavailable")
-    key=case.candidate.id.split(":")[-1]
-    kinds={"cand_001":"crop","cand_002":"caption","cand_003":"unrelated","cand_004":"resize","cand_005":"fake_endorsement","cand_006":"watermark","cand_007":"credited","cand_008":"authorized","cand_009":"ambiguous"}
-    if key not in kinds: raise HTTPException(404,"Candidate media unavailable")
-    path=Path(__file__).resolve().parents[3]/"demo_data/videos"/f"{case.candidate.palette_seed}_{kinds[key]}.mp4"
-    if not path.is_file():raise HTTPException(404,"Candidate media unavailable")
-    return FileResponse(path,media_type="video/mp4")
 
-@router.post("/demo/advance-clock")
-def advance_clock(days: int = 7, db: Session = Depends(get_db)):
-    if not settings.demo_mode: raise HTTPException(409,"Demo clock unavailable outside demo mode")
-    if not 1<=days<=365: raise HTTPException(422,"Days must be between 1 and 365")
-    from app.services.scheduler import advance,now
-    count=advance(db,days)
-    return {"demoTime":now(db),"casesChecked":count,"adapter":"sandbox"}
 
 @router.get("/content/{content_id}/scans")
 def scan_history(content_id: str, db: Session = Depends(get_db)):

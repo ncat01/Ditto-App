@@ -13,18 +13,23 @@ import androidx.compose.ui.unit.sp
 val DisplayFont = FontFamily(androidx.compose.ui.text.font.Font(com.ditto.app.R.font.space_grotesk))
 val BodyFont = FontFamily(androidx.compose.ui.text.font.Font(com.ditto.app.R.font.dm_sans))
 val HandwritingFont = FontFamily(androidx.compose.ui.text.font.Font(com.ditto.app.R.font.caveat))
-val HandwritingStyle = TextStyle(fontFamily = HandwritingFont, fontSize = 34.sp, lineHeight = 38.sp)
+val HandwritingStyle = TextStyle(
+    fontFamily = HandwritingFont,
+    fontWeight = FontWeight.Medium,
+    fontSize = 36.sp,
+    lineHeight = 40.sp
+)
 private val Display = DisplayFont
 private val Body = BodyFont
 
 val DittoTypography = Typography(
     displayLarge = TextStyle(
         fontFamily = Display, fontWeight = FontWeight.Bold,
-        fontSize = 40.sp, lineHeight = 46.sp, letterSpacing = (-0.6).sp
+        fontSize = 42.sp, lineHeight = 46.sp, letterSpacing = (-1.0).sp
     ),
     displayMedium = TextStyle(
         fontFamily = Display, fontWeight = FontWeight.Bold,
-        fontSize = 32.sp, lineHeight = 38.sp, letterSpacing = (-0.4).sp
+        fontSize = 34.sp, lineHeight = 39.sp, letterSpacing = (-0.7).sp
     ),
     displaySmall = TextStyle(
         fontFamily = Display, fontWeight = FontWeight.Bold,
@@ -39,15 +44,15 @@ val DittoTypography = Typography(
         fontSize = 18.sp, lineHeight = 24.sp
     ),
     titleLarge = TextStyle(
-        fontFamily = Body, fontWeight = FontWeight.SemiBold,
-        fontSize = 17.sp, lineHeight = 23.sp, letterSpacing = (-0.1).sp
+        fontFamily = Display, fontWeight = FontWeight.Bold,
+        fontSize = 19.sp, lineHeight = 24.sp, letterSpacing = (-0.2).sp
     ),
     titleMedium = TextStyle(
-        fontFamily = Body, fontWeight = FontWeight.SemiBold,
-        fontSize = 15.sp, lineHeight = 21.sp
+        fontFamily = Display, fontWeight = FontWeight.SemiBold,
+        fontSize = 16.sp, lineHeight = 22.sp
     ),
     titleSmall = TextStyle(
-        fontFamily = Body, fontWeight = FontWeight.Medium,
+        fontFamily = Display, fontWeight = FontWeight.SemiBold,
         fontSize = 13.sp, lineHeight = 18.sp
     ),
     bodyLarge = TextStyle(

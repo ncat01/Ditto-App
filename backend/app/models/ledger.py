@@ -36,14 +36,14 @@ class Evidence(Base):
     case_id: Mapped[str]=mapped_column(ForeignKey('cases.id'),index=True)
     kind: Mapped[str]=mapped_column(String(32))
     payload: Mapped[dict]=mapped_column(JSON)
-    simulated: Mapped[bool]=mapped_column(Boolean,default=True)
+    simulated: Mapped[bool]=mapped_column(Boolean,default=False)
 
 class AgentDecision(Base):
     __tablename__='agent_decisions'
     id: Mapped[str]=mapped_column(String(64),primary_key=True)
     case_id: Mapped[str]=mapped_column(ForeignKey('cases.id'),index=True)
     component: Mapped[str]=mapped_column(String(32))
-    provider: Mapped[str]=mapped_column(String(64),default='deterministic-demo')
+    provider: Mapped[str]=mapped_column(String(64),default='unavailable')
     model: Mapped[str]=mapped_column(String(128),default='rules-v1')
     output: Mapped[dict]=mapped_column(JSON)
     created_at: Mapped[datetime]=mapped_column(DateTime,default=_now)
@@ -55,7 +55,7 @@ class Approval(Base):
     user_id: Mapped[str|None]=mapped_column(ForeignKey('users.id'),nullable=True,index=True)
     decision: Mapped[str]=mapped_column(String(32))
     recipient: Mapped[str]=mapped_column(String(128))
-    channel: Mapped[str]=mapped_column(String(32),default='sandbox')
+    channel: Mapped[str]=mapped_column(String(32),default='unavailable')
     body: Mapped[str]=mapped_column(Text)
     created_at: Mapped[datetime]=mapped_column(DateTime,default=_now)
 

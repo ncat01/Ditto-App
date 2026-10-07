@@ -2,55 +2,62 @@ package com.ditto.app.ui.theme
 
 import androidx.compose.ui.graphics.Color
 
-/**
- * Ditto palette. Off-white paper, charcoal text, pink and sunrise accents.
- * Status hues are deliberately desaturated so they never dominate the identity.
- */
+/** Bright creator palette: electric violet, magenta, aqua and sunlight. */
 object DittoColors {
     // Foundation
-    val Background = Color(0xFFFFFAF5)
-    val BackgroundAlt = Color(0xFFFFF0EA)
-    val Surface = Color(0xFFFFFFFF)
-    val SurfaceMuted = Color(0xFFFFEBE8)
-    val SurfaceSunken = Color(0xFFF5DCD9)
+    val Background = Color(0xFFF9F8FF)
+    val BackgroundAlt = Color(0xFFF1EFFF)
+    val Surface = Color(0xF7FFFFFF)
+    val SurfaceMuted = Color(0xFFF0ECFF)
+    val SurfaceSunken = Color(0xFFE5DFF7)
 
     // Brand accents (legacy property names retained for compatibility)
-    val PrimaryBlue = Color(0xFFB72F65)
-    val SecondaryBlue = Color(0xFFAD4939)
-    val LightBlue = Color(0xFFFFD7E4)
-    val DeepBlue = Color(0xFF63313C)
-    val BlueTint = Color(0xFFFFEFF3)
+    val PrimaryBlue = Color(0xFF6738E8)
+    val SecondaryBlue = Color(0xFFD9367A)
+    val LightBlue = Color(0xFFE2D9FF)
+    val DeepBlue = Color(0xFF301765)
+    val BlueTint = Color(0xFFF4E9FF)
+    val Aqua = Color(0xFF087F8C)
+    val AquaTint = Color(0xFFD9F5F2)
+    val Sunshine = Color(0xFFF2A51A)
+    val SunshineTint = Color(0xFFFFEDC5)
+
+    // Live background glow points.
+    val AuraViolet = Color(0xFF8B5CF6)
+    val AuraPink = Color(0xFFFF5AA5)
+    val AuraAqua = Color(0xFF36D6C7)
+    val AuraGold = Color(0xFFFFC857)
 
     // Text
-    val TextPrimary = Color(0xFF292A30)
-    val TextSecondary = Color(0xFF575963)
-    val TextTertiary = Color(0xFF686B75)
-    val TextOnDark = Color(0xFFFFFAF5)
+    val TextPrimary = Color(0xFF211A35)
+    val TextSecondary = Color(0xFF544D68)
+    val TextTertiary = Color(0xFF716A84)
+    val TextOnDark = Color(0xFFFFFFFF)
 
     // Lines
-    val Border = Color(0xFFEBD9D2)
-    val BorderSubtle = Color(0xFFF2E4DE)
+    val Border = Color(0xFFDCD5EF)
+    val BorderSubtle = Color(0xFFEAE6F6)
 
-    // Muted status
-    val Success = Color(0xFF4A7C59)
-    val SuccessBg = Color(0xFFE8EFE9)
-    val Warning = Color(0xFF875322)
-    val WarningBg = Color(0xFFF6EEE0)
-    val Danger = Color(0xFF9B4A3F)
-    val DangerBg = Color(0xFFF4E8E6)
-    val Neutral = Color(0xFF6B7280)
-    val NeutralBg = Color(0xFFEFEFEC)
+    // Accessible status colours.
+    val Success = Color(0xFF08775C)
+    val SuccessBg = Color(0xFFDDF5EC)
+    val Warning = Color(0xFF925700)
+    val WarningBg = Color(0xFFFFEDC5)
+    val Danger = Color(0xFFA32951)
+    val DangerBg = Color(0xFFFFE1EA)
+    val Neutral = Color(0xFF655E75)
+    val NeutralBg = Color(0xFFEDEAF3)
 
     // Evidence placeholder gradients — one per palette seed, so seeded demo content
     // renders as distinct, plausible imagery without bundling photographs.
     val evidencePalettes: List<Pair<Color, Color>> = listOf(
-        Color(0xFFAD4939) to Color(0xFFC4763F), // sunset
-        Color(0xFF3E4C59) to Color(0xFF8A97A5), // studio
-        Color(0xFF1F6F7A) to Color(0xFF7FB8B0), // coastal
-        Color(0xFF6E5A3E) to Color(0xFFC3A87C), // market
-        Color(0xFF8A5A3B) to Color(0xFFD9A05B), // rooftop
-        Color(0xFF41567A) to Color(0xFF93A5C4),
-        Color(0xFF4A6B4E) to Color(0xFF9DB89F)
+        Color(0xFF6D3DE8) to Color(0xFFFF5AA5),
+        Color(0xFF087F8C) to Color(0xFF42D9C8),
+        Color(0xFFFF7A70) to Color(0xFFFFC857),
+        Color(0xFF405DE6) to Color(0xFFC13584),
+        Color(0xFF7C3AED) to Color(0xFF38BDF8),
+        Color(0xFFD9367A) to Color(0xFFFF8A65),
+        Color(0xFF0F766E) to Color(0xFFA3E635)
     )
 
     fun evidencePalette(seed: Int): Pair<Color, Color> =

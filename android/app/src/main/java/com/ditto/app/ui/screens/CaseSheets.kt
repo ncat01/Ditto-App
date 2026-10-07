@@ -42,10 +42,7 @@ import com.ditto.app.ui.components.PrimaryButton
 import com.ditto.app.ui.components.SecondaryButton
 import com.ditto.app.ui.theme.DittoColors
 
-/**
- * The human approval gate (report §18). Shows recipient, platform, action and the full
- * draft before anything is dispatched. Wording is explicit that the send is simulated.
- */
+/** Review an exact message through the configured delivery provider. */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun ApprovalSheet(
@@ -121,19 +118,14 @@ fun ApprovalSheet(
                     .padding(12.dp)
             ) {
                 Text(
-                    "Demo Mode: approving prepares this message and records the action in " +
-                        "the case log. No message is delivered to any live platform.",
+                    "Review the exact recipient and message before approving. Unavailable delivery channels cannot send.",
                     style = MaterialTheme.typography.bodySmall,
                     color = DittoColors.Warning
                 )
             }
 
             Spacer(Modifier.height(20.dp))
-            PrimaryButton(
-                text = "Approve sandbox action",
-                onClick = onApprove,
-                modifier = Modifier.fillMaxWidth()
-            )
+            EmailOutreachCard(case.id, plan.draftBody)
             Spacer(Modifier.height(10.dp))
             SecondaryButton(
                 text = "Defer for now",
@@ -241,95 +233,19 @@ fun DraftEditorSheet(
     }
 }
 
-/** Outcome picker driving the Follow-Up Agent simulation (report §21). */
+/** Follow-up observations require real evidence from a configured provider. */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun FollowUpSheet(
-    onDismiss: () -> Unit,
-    onPick: (FollowUpOutcome) -> Unit
-) {
-    val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
-
-    ModalBottomSheet(
-        onDismissRequest = onDismiss,
-        sheetState = sheetState,
-        containerColor = DittoColors.BackgroundAlt,
-        dragHandle = null
-    ) {
-        Column(
-            Modifier
-                .fillMaxWidth()
-                .padding(horizontal = 20.dp)
-                .padding(top = 20.dp, bottom = 28.dp)
-        ) {
-            Eyebrow("Weekly re-check")
-            Spacer(Modifier.height(8.dp))
-            Text(
-                "Simulate the outcome",
-                style = MaterialTheme.typography.headlineMedium,
-                color = DittoColors.TextPrimary
-            )
-            Spacer(Modifier.height(6.dp))
-            Text(
-                "A real deployment observes this from the platform. For the demo, pick what " +
-                    "the agent finds — it decides what to do next on its own.",
-                style = MaterialTheme.typography.bodyMedium,
-                color = DittoColors.TextSecondary
-            )
-            Spacer(Modifier.height(18.dp))
-
-            FollowUpOutcome.entries.forEach { outcome ->
-                OutcomeRow(
-                    label = outcome.label,
-                    hint = outcome.hint(),
-                    onClick = { onPick(outcome) }
-                )
-                Spacer(Modifier.height(8.dp))
-            }
-
-            Spacer(Modifier.height(10.dp))
-            SecondaryButton(
-                text = "Defer for now",
-                onClick = onDismiss,
-                modifier = Modifier.fillMaxWidth()
-            )
+fun FollowUpSheet(onDismiss: () -> Unit, onPick: (FollowUpOutcome) -> Unit) {
+    ModalBottomSheet(onDismissRequest = onDismiss, containerColor = DittoColors.BackgroundAlt) {
+        Column(Modifier.fillMaxWidth().padding(20.dp)) {
+            Eyebrow("Follow-up")
+            Text("Automatic re-check unavailable", style = MaterialTheme.typography.headlineMedium)
+            Spacer(Modifier.height(12.dp))
+            Text("No observation provider is connected for this case. Review new evidence before changing its status.", style = MaterialTheme.typography.bodyMedium)
+            Spacer(Modifier.height(20.dp))
+            SecondaryButton(text = "Close", onClick = onDismiss, modifier = Modifier.fillMaxWidth())
         }
-    }
-}
-
-private fun FollowUpOutcome.hint(): String = when (this) {
-    FollowUpOutcome.NO_RESPONSE -> "Agent escalates to the next tier"
-    FollowUpOutcome.PARTIAL_RESPONSE -> "Agent holds at the current tier"
-    FollowUpOutcome.HOSTILE_RESPONSE -> "Agent escalates straight to a formal notice"
-    FollowUpOutcome.ATTRIBUTION_ADDED -> "Agent resolves the case"
-    FollowUpOutcome.CONTENT_REMOVED -> "Agent resolves the case"
-}
-
-@Composable
-private fun OutcomeRow(label: String, hint: String, onClick: () -> Unit) {
-    Row(
-        Modifier
-            .fillMaxWidth()
-            .clip(RoundedCornerShape(8.dp))
-            .background(DittoColors.Surface)
-            .border(1.dp, DittoColors.Border, RoundedCornerShape(8.dp))
-            .clickable(onClick = onClick)
-            .padding(14.dp),
-        verticalAlignment = Alignment.CenterVertically
-    ) {
-        Column(Modifier.weight(1f)) {
-            Text(
-                label,
-                style = MaterialTheme.typography.titleSmall,
-                color = DittoColors.TextPrimary
-            )
-            Text(
-                hint,
-                style = MaterialTheme.typography.bodySmall,
-                color = DittoColors.TextSecondary
-            )
-        }
-        Text("→", style = MaterialTheme.typography.titleMedium, color = DittoColors.SecondaryBlue)
     }
 }
 

@@ -234,7 +234,7 @@ data class ActivityEvent(
 enum class ScanStage(val label: String) {
     IDLE("Idle"),
     INGESTING("Ingesting"),
-    FINGERPRINTING("Generating fingerprint"),
+    FINGERPRINTING("Preparing media"),
     DISCOVERING("Discovering candidates"),
     VERIFYING("Verifying matches"),
     PREPARING("Preparing cases"),

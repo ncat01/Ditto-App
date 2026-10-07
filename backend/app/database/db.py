@@ -21,7 +21,10 @@ settings = get_settings()
 _connect_args = (
     {"check_same_thread": False, "timeout": 30} if settings.database_url.startswith("sqlite") else {}
 )
-engine = create_engine(settings.database_url, connect_args=_connect_args, future=True, pool_pre_ping=True)
+database_url = settings.database_url
+if database_url.startswith(('postgres://', 'postgresql://')):
+    database_url = 'postgresql+psycopg://' + database_url.split('://', 1)[1]
+engine = create_engine(database_url, connect_args=_connect_args, future=True, pool_pre_ping=True)
 SessionLocal = sessionmaker(bind=engine, autoflush=False, expire_on_commit=False)
 
 
@@ -39,7 +42,7 @@ def get_db(request: Request) -> Iterator[Session]:
 def init_db() -> None:
     from app.models import tables  # noqa: F401  (registers the mappers)
 
-    from app.models import ledger, integrations, account_security, remote_media
+    from app.models import ledger, integrations, account_security, remote_media, refresh_tokens, jobs
     Base.metadata.create_all(bind=engine)
 
 if settings.database_url.startswith("sqlite"):

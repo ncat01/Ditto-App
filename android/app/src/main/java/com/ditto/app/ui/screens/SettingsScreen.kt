@@ -1,4 +1,4 @@
-﻿package com.ditto.app.ui.screens
+package com.ditto.app.ui.screens
 
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
@@ -28,6 +28,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.ditto.app.BuildConfig
 import com.ditto.app.ui.components.DittoCard
@@ -37,6 +38,7 @@ import com.ditto.app.ui.components.HairlineDivider
 import com.ditto.app.ui.components.SecondaryButton
 import com.ditto.app.ui.components.StatusPill
 import com.ditto.app.ui.theme.DittoColors
+import com.ditto.app.ui.theme.HandwritingStyle
 import com.ditto.app.viewmodel.DittoViewModel
 
 @Composable
@@ -51,6 +53,7 @@ fun SettingsScreen(
     val connected=com.ditto.app.core.BackendConnection(androidx.compose.ui.platform.LocalContext.current).enabled()
     val context=androidx.compose.ui.platform.LocalContext.current
     val scope=androidx.compose.runtime.rememberCoroutineScope()
+    val signOut=LocalSignOut.current
 
     var showGuide by androidx.compose.runtime.remember { androidx.compose.runtime.mutableStateOf(false) }
     if(showGuide) {
@@ -66,12 +69,18 @@ fun SettingsScreen(
         verticalArrangement = Arrangement.spacedBy(16.dp)
     ) {
         item {
-            Eyebrow("Profile")
-            Spacer(Modifier.height(6.dp))
+            Row(verticalAlignment=Alignment.CenterVertically) {
+                Box(Modifier.size(52.dp).clip(RoundedCornerShape(18.dp)).background(DittoColors.Surface.copy(alpha=.88f)),contentAlignment=Alignment.Center) { DittoMark(size=42) }
+                Spacer(Modifier.width(12.dp))
+                Column {
+                    Eyebrow("Profile")
+                    Text("Your creator space",style=MaterialTheme.typography.displaySmall,color=DittoColors.TextPrimary)
+                }
+            }
             Text(
-                "Your creator space",
-                style = MaterialTheme.typography.displaySmall,
-                color = DittoColors.TextPrimary
+                "everything in one place",
+                style = HandwritingStyle.copy(fontSize = 28.sp, lineHeight = 31.sp),
+                color = DittoColors.SecondaryBlue
             )
         }
 
@@ -84,7 +93,7 @@ fun SettingsScreen(
         }
         // ---- profile ----
         item {
-            DittoCard {
+            DittoCard(background=DittoColors.BlueTint.copy(alpha=.90f),borderColor=DittoColors.LightBlue) {
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     Box(
                         Modifier
@@ -102,16 +111,17 @@ fun SettingsScreen(
                     Spacer(Modifier.width(14.dp))
                     Column(Modifier.weight(1f)) {
                         Text(
-                            if(connected) "Server creator account" else settings.creatorName,
+                            if(connected) "Ditto member" else settings.creatorName,
                             style = MaterialTheme.typography.titleMedium,
                             color = DittoColors.TextPrimary
                         )
                         Text(
-                            if(connected) "Connected test • separate from offline accounts" else settings.creatorHandle,
+                            if(connected) "Private Ditto account" else settings.creatorHandle,
                             style = MaterialTheme.typography.bodySmall,
                             color = DittoColors.TextSecondary
                         )
                     }
+                    if(connected) StatusPill("Private",DittoColors.Aqua,DittoColors.AquaTint)
                 }
                 Spacer(Modifier.height(14.dp))
                 HairlineDivider()
@@ -124,126 +134,16 @@ fun SettingsScreen(
             }
         }
 
-        // ---- demo mode ----
-        item {
-            DittoCard {
-                Eyebrow("Demo mode")
-                Spacer(Modifier.height(10.dp))
-                ToggleRow(
-                    title = "Demo Mode",
-                    subtitle = if(connected) "Connected to your test backend. Discovery and outreach remain sandboxed." else "Offline demo is active. Log out to choose Connected test.",
-                    checked = true,
-                    onChange = {},
-                    enabled = false
-                )
-                Spacer(Modifier.height(6.dp))
-                HairlineDivider()
-                Spacer(Modifier.height(6.dp))
-                ToggleRow(
-                    title = "Presentation Mode",
-                    subtitle = "Saved presentation preference. The same measured pipeline runs in both settings.",
-                    checked = settings.presentationMode,
-                    onChange = vm::setPresentationMode
-                )
-                Spacer(Modifier.height(14.dp))
-                SecondaryButton(
-                    text = if(connected) "Load server sample cases" else "Reset demo data",
-                    onClick = { if(connected) scope.launch {
-                        val result=kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) { com.ditto.app.core.ServiceLocator.repository(context).seedDemoData(false) }
-                        vm.showMessage(when(result) { is com.ditto.app.data.repository.DittoResult.Ok -> "Server sample cases loaded."; is com.ditto.app.data.repository.DittoResult.Err -> result.message })
-                    } else vm.resetDemoData() },
-                    modifier = Modifier.fillMaxWidth()
-                )
-            }
-        }
-
-        // ---- agent configuration ----
-        item {
-            DittoCard {
-                Eyebrow("Agent preferences")
-                Spacer(Modifier.height(10.dp))
-                ToggleRow(
-                    title = "Require human approval",
-                    subtitle = "Always on. Ditto drafts and recommends, but never sends an " +
-                        "attribution request or takedown notice without your approval.",
-                    checked = true,
-                    onChange = {},
-                    enabled = false
-                )
-                Spacer(Modifier.height(6.dp))
-                HairlineDivider()
-                Spacer(Modifier.height(6.dp))
-                ToggleRow(
-                    title = "Notify on escalation",
-                    subtitle = "Saved preference. Push delivery is unavailable in this offline demo.",
-                    checked = settings.notifyOnEscalation,
-                    onChange = vm::setNotifyEscalation
-                )
-                Spacer(Modifier.height(6.dp))
-                HairlineDivider()
-                Spacer(Modifier.height(6.dp))
-                ToggleRow(
-                    title = "Notify on new case",
-                    subtitle = "Saved preference. Review new cases in Activity; push delivery is unavailable.",
-                    checked = settings.notifyOnNewCase,
-                    onChange = vm::setNotifyNewCase
-                )
-            }
-        }
-
         item {
             DittoCard {
                 Eyebrow("Privacy")
-                Text(if(connected) "Accounts, case records and uploads are stored on the configured backend. Server snapshots refresh while signed in; external platform delivery is unavailable. Deleting a Codespace deletes its stored data." else "Media and case databases stay in private app storage for this account. OS backup is disabled. There is no cloud sync or live platform delivery.",style=MaterialTheme.typography.bodySmall)
-                Spacer(Modifier.height(12.dp))
-                SecondaryButton(text="Instagram connection status",onClick={vm.showMessage("Instagram is not connected. This build uses generated demo videos and local uploads; no Instagram login or discovery adapter is installed.")},modifier=Modifier.fillMaxWidth())
-            }
-        }
-        // ---- connected platforms ----
-        item {
-            DittoCard {
-                Eyebrow("Connected platforms")
-                Spacer(Modifier.height(12.dp))
-                IntegrationRow("Meta Graph API", "Not configured", false)
-                IntegrationRow("Google Cloud Vision", "Not configured", false)
-                IntegrationRow("Meta Ad Library", "Not configured", false)
-                IntegrationRow("LLM verification", "Not configured", false)
-                IntegrationRow("On-device pHash", "Active", true)
-                IntegrationRow("Demo discovery corpus", "Active", true)
-                Spacer(Modifier.height(12.dp))
-                HairlineDivider()
-                Spacer(Modifier.height(10.dp))
-                Text(
-                    "Provider credentials are never stored in this app. They live in the " +
-                        "backend's environment, and Ditto falls back to Demo Mode when a " +
-                        "provider is unavailable.",
-                    style = MaterialTheme.typography.bodySmall,
-                    color = DittoColors.TextSecondary
-                )
-            }
-        }
-
-        // ---- engines ----
-        item {
-            DittoCard(background = DittoColors.BackgroundAlt) {
-                Eyebrow("Active engines")
-                Spacer(Modifier.height(10.dp))
-                EngineRow("Matching", engines.matcher)
-                EngineRow("Discovery", engines.discovery)
-                EngineRow("Verification", engines.verification)
-                Spacer(Modifier.height(10.dp))
-                HairlineDivider()
-                Spacer(Modifier.height(10.dp))
-                EngineRow("Backend", BuildConfig.API_BASE_URL)
-                EngineRow("Storage", "Room / SQLite (on-device)")
+                Text("Your originals and case records are private to your account. Cases are created when you request a comparison. Review evidence before approving any action.",style=MaterialTheme.typography.bodySmall)
             }
         }
 
         // ---- links ----
         item {
             DittoCard(contentPadding = 0) {
-                LinkRow("AI Likeness Protection", "Coming in P2", onOpenLikeness)
-                HairlineDivider()
                 LinkRow("Analytics", "Detection and resolution metrics", onOpenAnalytics)
             }
         }
@@ -275,14 +175,16 @@ fun SettingsScreen(
                 )
                 Spacer(Modifier.height(10.dp))
                 Text(
-                    "An agentic AI content credit system. Ditto finds where your content " +
-                        "gets reused, verifies it, recommends an action, and keeps the case " +
-                        "open until it resolves.",
+                    "Upload your originals, search for possible copies and review the evidence before taking action.",
                     style = MaterialTheme.typography.bodySmall,
                     color = DittoColors.TextTertiary
                 )
             }
         }
+        item {
+            SecondaryButton(text="Log out",onClick=signOut,modifier=Modifier.fillMaxWidth())
+        }
+
     }
 }
 
@@ -409,7 +311,7 @@ private fun LinkRow(title: String, subtitle: String, onClick: () -> Unit) {
                 color = DittoColors.TextSecondary
             )
         }
-        Text("â†’", style = MaterialTheme.typography.titleMedium, color = DittoColors.SecondaryBlue)
+        Text("›", style = MaterialTheme.typography.titleLarge, color = DittoColors.SecondaryBlue)
     }
 }
 

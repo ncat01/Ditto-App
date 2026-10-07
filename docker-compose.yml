@@ -1,33 +1,35 @@
-# Ditto backend. SQLite by default so this runs with no external services.
-# Uncomment the `db` service and swap DITTO_DATABASE_URL for PostgreSQL.
+# Local PostgreSQL validation; public HTTPS deployment is separate.
 services:
   backend:
     build:
       context: .
       dockerfile: backend/Dockerfile
     ports:
-      - "8010:8010"
+      - "127.0.0.1:8010:8010"
     environment:
-      DITTO_DATABASE_URL: sqlite:////data/ditto.db
-      DITTO_DEMO_MODE: "true"
+      DITTO_DATABASE_URL: postgresql+psycopg://ditto:${DITTO_POSTGRES_PASSWORD:?Set a private database password}@db:5432/ditto
+      DITTO_DEMO_MODE: "false"
       DITTO_MEDIA_ROOT: /data/media
-      # Provider keys are optional; each falls back to Demo Mode when unset.
-      # META_ACCESS_TOKEN: ""
-      # GOOGLE_CLOUD_API_KEY: ""
-      # LLM_API_KEY: ""
     volumes:
-      - ditto-data:/data
+      - ditto-media:/data
+    depends_on:
+      db:
+        condition: service_healthy
     restart: unless-stopped
-
-  # db:
-  #   image: postgres:16-alpine
-  #   environment:
-  #     POSTGRES_USER: ditto
-  #     POSTGRES_PASSWORD: change-me
-  #     POSTGRES_DB: ditto
-  #   volumes:
-  #     - ditto-pg:/var/lib/postgresql/data
-
+  db:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: ditto
+      POSTGRES_PASSWORD: ${DITTO_POSTGRES_PASSWORD:?Set a private database password}
+      POSTGRES_DB: ditto
+    volumes:
+      - ditto-pg:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ditto -d ditto"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+    restart: unless-stopped
 volumes:
-  ditto-data:
-  # ditto-pg:
+  ditto-media:
+  ditto-pg:

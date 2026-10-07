@@ -64,7 +64,12 @@ def test_delete_is_scoped_and_media_is_removed(monkeypatch,tmp_path):
     with TestClient(app) as client:
         email, uid, headers = signup(client)
         _, other, other_headers = signup(client)
-        assert client.post('/api/demo/seed',headers=headers).status_code == 200
+        import io
+        from PIL import Image
+        image = io.BytesIO(); Image.new('RGB', (32,32), 'blue').save(image, format='PNG')
+        uploaded = client.post('/api/content/upload', headers=headers, params={'title':'Private original'},
+                               files={'file':('original.png',image.getvalue(),'image/png')})
+        assert uploaded.status_code == 201
         folder=tmp_path/uid; folder.mkdir(); (folder/'private.mp4').write_bytes(b'private')
         other_folder=tmp_path/other;other_folder.mkdir();(other_folder/'private.mp4').write_bytes(b'other')
         assert client.post('/api/auth/delete-account',headers=headers,json={'password':'wrong-password'}).status_code == 401

@@ -1,4 +1,9 @@
 """Appwrite Python entrypoint. Trusted runtime key never enters HTTP headers."""
+# Open Runtimes imports this module as function.cloud.*. Add the packaged
+# function root so shared cloud/app modules resolve consistently.
+import sys
+from pathlib import Path
+sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 from cloud.api import app
 
 

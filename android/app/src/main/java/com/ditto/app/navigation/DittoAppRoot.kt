@@ -6,6 +6,7 @@ import androidx.compose.animation.fadeOut
 import androidx.compose.animation.slideInVertically
 import androidx.compose.animation.slideOutVertically
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.WindowInsets
@@ -29,6 +30,8 @@ import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.shadow
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
@@ -63,7 +66,7 @@ fun DittoAppRoot() {
     val toast by vm.toast.collectAsStateWithLifecycle()
 
     Scaffold(
-        containerColor = DittoColors.Background,
+        containerColor = Color.Transparent,
         bottomBar = {
             AnimatedVisibility(
                 visible = showBottomBar,
@@ -114,7 +117,13 @@ fun DittoAppRoot() {
                 }
                 composable(Routes.SCAN) {
                     ScanScreen(
-                        onOpenCase = { navController.navigate(Routes.caseDetail(it)) }
+                        onOpenCase = { navController.navigate(Routes.caseDetail(it)) },
+                        onHome = {
+                            navController.navigate(Routes.HOME) {
+                                popUpTo(Routes.HOME) { inclusive = false }
+                                launchSingleTop = true
+                            }
+                        }
                     )
                 }
                 composable(Routes.ACTIVITY) {
@@ -191,16 +200,15 @@ fun DittoAppRoot() {
 
 @Composable
 private fun DittoBottomBar(currentRoute: String?, onSelect: (String) -> Unit) {
-    Column {
-        Box(
-            Modifier
-                .fillMaxWidth()
-                .height(1.dp)
-                .background(DittoColors.Border)
-        )
+    Box(Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 8.dp)) {
         NavigationBar(
-            containerColor = DittoColors.BackgroundAlt,
-            tonalElevation = 0.dp
+            modifier = Modifier
+                .fillMaxWidth()
+                .shadow(10.dp, RoundedCornerShape(28.dp), ambientColor = DittoColors.DeepBlue.copy(alpha = .16f))
+                .clip(RoundedCornerShape(28.dp))
+                .border(1.dp, DittoColors.Border.copy(alpha = .82f), RoundedCornerShape(28.dp)),
+            containerColor = DittoColors.Surface.copy(alpha = .94f),
+            tonalElevation = 1.dp
         ) {
             bottomTabs.forEach { tab ->
                 val selected = currentRoute == tab.route
@@ -225,7 +233,7 @@ private fun DittoBottomBar(currentRoute: String?, onSelect: (String) -> Unit) {
                         selectedTextColor = DittoColors.PrimaryBlue,
                         unselectedIconColor = DittoColors.TextTertiary,
                         unselectedTextColor = DittoColors.TextTertiary,
-                        indicatorColor = DittoColors.LightBlue
+                        indicatorColor = DittoColors.LightBlue.copy(alpha = .92f)
                     )
                 )
             }

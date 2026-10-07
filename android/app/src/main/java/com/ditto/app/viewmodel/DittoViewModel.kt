@@ -66,18 +66,6 @@ class DittoViewModel(app: Application) : AndroidViewModel(app) {
     fun showMessage(text: String) { _toast.value = text }
 
     // ---- settings ----
-    fun setDemoMode(enabled: Boolean) = viewModelScope.launch {
-        settingsStore.setDemoMode(enabled)
-        _toast.value = if (enabled) "Demo Mode on — synthetic corpus, nothing is sent."
-        else "Demo Mode off. Live providers are not configured, so scans still use the demo corpus."
-    }
-
-    fun setPresentationMode(enabled: Boolean) = viewModelScope.launch {
-        settingsStore.setPresentationMode(enabled)
-        _toast.value = if (enabled) "Presentation Mode on — faster scans, deterministic results."
-        else "Presentation Mode off."
-    }
-
     fun setNotifyEscalation(v: Boolean) = viewModelScope.launch {
         settingsStore.setNotifyEscalation(v)
     }
@@ -89,13 +77,6 @@ class DittoViewModel(app: Application) : AndroidViewModel(app) {
     fun setApiBaseUrl(url: String) = viewModelScope.launch {
         settingsStore.setApiBaseUrl(url)
         _toast.value = "Backend URL saved."
-    }
-
-    fun resetDemoData() = viewModelScope.launch {
-        when (val r = repo.resetDemoData()) {
-            is DittoResult.Ok -> _toast.value = "Demo data reset — ${r.value} cases seeded."
-            is DittoResult.Err -> _toast.value = r.message
-        }
     }
 
     companion object Selectors {

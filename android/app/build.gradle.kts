@@ -16,8 +16,8 @@ android {
         applicationId = "com.ditto.app"
         minSdk = 26
         targetSdk = 35
-        versionCode = 8
-        versionName = "1.7.0"
+        versionCode = 16
+        versionName = "1.8.7"
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
 
         // Backend base URL is injected at build time, never hardcoded in source.
@@ -131,3 +131,20 @@ dependencies {
     testImplementation(libs.junit)
     testImplementation(libs.kotlinx.coroutines.test)
 }
+
+val checkRuntimeAssets by tasks.registering {
+    val runtime = file("src/main")
+    inputs.dir(runtime)
+    doLast {
+        val forbidden = listOf("DemoCorpus", "VideoCorpus", "MockDiscoveryProvider",
+            "MockVerificationAgent", "MockActionPlanningAgent", "MockFollowUpAgent",
+            "DemoClock", "Alex Morgan", "Simulate weekly follow-up", "Offline demo")
+        val violations = runtime.walkTopDown().filter { it.isFile }.filter { source ->
+            val relative = source.relativeTo(runtime).invariantSeparatorsPath
+            relative.startsWith("assets/corpus/") || source.name.startsWith("tutorial_") ||
+                (source.extension == "kt" && forbidden.any { source.readText().contains(it) })
+        }.map { it.relativeTo(runtime).invariantSeparatorsPath }.toList()
+        check(violations.isEmpty()) { "Synthetic runtime content forbidden: ${violations.joinToString()}" }
+    }
+}
+tasks.named("preBuild") { dependsOn(checkRuntimeAssets) }

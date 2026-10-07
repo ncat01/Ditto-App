@@ -41,7 +41,6 @@ fun CaseCard(
         Row(verticalAlignment = Alignment.Top) {
             EvidenceVisual(
                 seed = case.candidate.paletteSeed,
-                transform = EvidenceTransform.fromNote(case.candidate.transformNote),
                 modifier = Modifier.size(64.dp),
                 cornerRadius = 6
             )
@@ -239,7 +238,7 @@ fun EmptyState(
 }
 
 /** Friendly relative time used across the activity feed and case rows. */
-fun relativeTime(timestamp: Long, now: Long = com.ditto.app.core.DemoClock.displayNow()): String {
+fun relativeTime(timestamp: Long, now: Long = System.currentTimeMillis()): String {
     val diff = now - timestamp
     if (diff < 0) {
         val ahead = -diff

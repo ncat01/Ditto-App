@@ -123,6 +123,11 @@ class ScanRequest(BaseModel):
 class ApproveRequest(BaseModel):
     editedBody: str | None = None
     tone: MessageTone | None = None
+    recipient: str = ''
+    requestId: str = ''
+    evidenceReviewed: bool = False
+    recipientConfirmed: bool = False
+    reminderDays: int = 0
 
     @field_validator("editedBody")
     @classmethod

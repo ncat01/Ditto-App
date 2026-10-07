@@ -6,6 +6,7 @@ import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import androidx.core.splashscreen.SplashScreen.Companion.installSplashScreen
 import com.ditto.app.ui.screens.AccountGate
+import com.ditto.app.ui.components.InteractiveAuraBackground
 import com.ditto.app.ui.theme.DittoTheme
 
 class MainActivity : ComponentActivity() {
@@ -15,7 +16,9 @@ class MainActivity : ComponentActivity() {
         super.onCreate(savedInstanceState)
         setContent {
             DittoTheme {
-                AccountGate()
+                InteractiveAuraBackground {
+                    AccountGate()
+                }
             }
         }
     }

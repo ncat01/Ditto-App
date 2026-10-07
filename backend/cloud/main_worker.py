@@ -1,4 +1,9 @@
 """Private asynchronous Function; schedule handles missed execution wakes."""
+# Open Runtimes imports this module as function.cloud.*. Add the packaged
+# function root so shared cloud/app modules resolve consistently.
+import sys
+from pathlib import Path
+sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 import asyncio
 import json
 from cloud.client import Client, CloudError, ident

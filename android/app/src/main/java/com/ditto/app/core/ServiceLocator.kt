@@ -1,15 +1,8 @@
 package com.ditto.app.core
 
 import android.content.Context
-import com.ditto.app.data.demo.MockDiscoveryProvider
-import com.ditto.app.data.demo.PerceptualHasher
-import com.ditto.app.data.local.DittoDatabase
 import com.ditto.app.data.repository.DittoRepository
-import com.ditto.app.data.repository.LocalDittoRepository
 import com.ditto.app.data.repository.RemoteDittoRepository
-import com.ditto.app.domain.agents.MockActionPlanningAgent
-import com.ditto.app.domain.agents.MockFollowUpAgent
-import com.ditto.app.domain.agents.MockVerificationAgent
 
 /**
  * Manual dependency container. Chosen over Hilt deliberately: the graph is small and
@@ -21,7 +14,7 @@ object ServiceLocator {
     @Volatile var activeUser: String? = null
         private set
     fun activateUser(id: String?) {
-        if (activeUser != id) { (repo as? RemoteDittoRepository)?.close();DemoClock.clearDisplay(); activeUser = id; repo = null; settingsStore = null }
+        if (activeUser != id) { (repo as? RemoteDittoRepository)?.close(); activeUser = id; repo = null; settingsStore = null }
     }
     @Volatile private var repo: DittoRepository? = null
     @Volatile private var settingsStore: SettingsStore? = null
@@ -32,7 +25,7 @@ object ServiceLocator {
         }
 
     /**
-     * Demo Mode repository. Live Mode swaps in the Retrofit-backed implementation
+     * API repository. All account data comes from the hosted backend.
      * against the FastAPI backend; the UI depends only on [DittoRepository].
      */
     fun repository(context: Context): DittoRepository =
@@ -40,24 +33,8 @@ object ServiceLocator {
             repo ?: run {
                 val connection=BackendConnection(context.applicationContext)
                 if(connection.enabled()) RemoteDittoRepository(context.applicationContext, connection.session() ?: error("Sign in to the backend first"))
-                else repositoryFor(context.applicationContext, activeUser ?: error("Sign in first"))
+                else error("Sign in to your Ditto account first")
             }.also { repo = it }
         }
 
-    private val userRepositories = mutableMapOf<String, DittoRepository>()
-    fun repositoryFor(context: Context,user: String): DittoRepository = synchronized(userRepositories) {
-        userRepositories.getOrPut(user) { buildLocal(context.applicationContext,user) }
-    }
-    private fun buildLocal(context: Context,user: String): DittoRepository = LocalDittoRepository(
-        clock = { DemoClock.now(context,user) },
-        context = context,
-        userId = user,
-        db = DittoDatabase.get(context, user),
-        videoCorpus = com.ditto.app.data.demo.VideoCorpus(context),
-        matcher = PerceptualHasher(context),
-        discovery = MockDiscoveryProvider(com.ditto.app.data.demo.VideoCorpus(context)),
-        verifier = MockVerificationAgent(),
-        planner = MockActionPlanningAgent(),
-        followUp = MockFollowUpAgent()
-    )
 }

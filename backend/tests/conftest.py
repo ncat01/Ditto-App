@@ -5,6 +5,7 @@ TEST_DIRECTORY=tempfile.TemporaryDirectory(prefix='ditto-tests-')
 os.environ['DITTO_DATABASE_URL']='sqlite:///'+(Path(TEST_DIRECTORY.name)/'test.db').as_posix()
 os.environ['DITTO_MEDIA_ROOT']=(Path(TEST_DIRECTORY.name)/'media').as_posix()
 os.environ['DITTO_DEMO_MODE']='true'
+os.environ['PROCESSING_WORKER_ENABLED']='false'
 from app.database.db import engine
 
 def pytest_sessionfinish(session,exitstatus):

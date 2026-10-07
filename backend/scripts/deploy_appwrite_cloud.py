@@ -198,7 +198,7 @@ def function(client, identity):
         if name in variables:
             client.request('PUT', '/functions/' + identity + '/variables/' + ident(variables[name]), json=body)
         else:
-            client.request('POST', '/functions/' + identity + '/variables', json={**body, 'variableId': hashlib.sha256(name.encode()).hexdigest()[:32]})
+            client.request('POST', '/functions/' + identity + '/variables', json={**body, 'variableId': hashlib.sha256((identity + ":" + name).encode()).hexdigest()[:32]})
 
 
 def build(client, identity, archive, sleep=time.sleep):
@@ -253,6 +253,13 @@ def verify(client):
             if value['user']['email'] != email:
                 raise ValueError('Live account contract differs')
             headers = {'Authorization': 'Bearer ' + value['token'], 'Content-Type': 'application/json'}
+            status, body = execute(client, '/api/cases', headers=headers)
+            if status != 200 or json.loads(body) != []:
+                raise ValueError('New accounts must start with no cases')
+            status, body = execute(client, '/api/content', headers=headers)
+            if status != 200 or json.loads(body) != []:
+                raise ValueError('New accounts must start with no originals')
+
             status, body = execute(client, '/api/auth/me', headers=headers)
             if status != 200 or json.loads(body)['id'] != accounts[-1]:
                 raise ValueError('Live session contract failed')

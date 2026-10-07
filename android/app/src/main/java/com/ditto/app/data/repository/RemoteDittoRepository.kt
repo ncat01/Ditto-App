@@ -16,7 +16,7 @@ import java.time.*
 
 /** Server owns all mutations. Snapshot data is memory-only and cleared at logout. */
 class RemoteDittoRepository(private val context: Context, private val session: ServerSession): DittoRepository {
-    private val api=BackendApi(session.endpoint,session.token)
+    private val api=BackendApi(session.endpoint,session.token) { com.ditto.app.core.BackendConnection(context).accessToken(session.userId) }
     private val scope=CoroutineScope(SupervisorJob()+Dispatchers.IO)
     private val mutex=Mutex()
     private val cases=MutableStateFlow<List<Case>>(emptyList())
@@ -28,7 +28,7 @@ class RemoteDittoRepository(private val context: Context, private val session: S
     fun close() { scope.cancel(); cases.value=emptyList();activity.value=emptyList();content.value=emptyList() }
     override val verificationEngineName="Review ownership and permission before acting"
     override val discoveryProviderName="Submitted media comparison and configured web search; no platform-wide Instagram search"
-    override val matcherName="Server measured five-frame pHash"
+    override val matcherName="Visual similarity analysis"
     override fun observeCases(): Flow<List<Case>> = cases
     override fun observeCase(id:String): Flow<Case?> = cases.map { rows-> rows.firstOrNull { it.id==id } }
     override fun observeActivity(): Flow<List<ActivityEvent>> = activity
@@ -49,7 +49,7 @@ class RemoteDittoRepository(private val context: Context, private val session: S
         cases.value=nextCases; content.value=nextContent; activity.value=nextActivity; stats.value=nextStats;connectionError.value=null
     }
     private suspend fun <T> result(block: suspend ()->T): DittoResult<T> = withContext(Dispatchers.IO) {
-        try { DittoResult.Ok(block()) } catch(e:CancellationException) { throw e } catch(e:Exception) { DittoResult.Err(e.message ?: "Cannot reach backend. Resume the Codespace and check its public test port.") }
+        try { DittoResult.Ok(block()) } catch(e:CancellationException) { throw e } catch(e:Exception) { DittoResult.Err(e.message ?: "Cannot reach Ditto. Check your connection and try again.") }
     }
     override suspend fun ingest(title:String,uri:String?,isVideo:Boolean,source:String): DittoResult<ContentItem> = result {
         require(uri!=null) { "Choose a media file." }
@@ -73,7 +73,7 @@ class RemoteDittoRepository(private val context: Context, private val session: S
         emit(DittoResult.Ok(ScanProgress(ScanStage.INGESTING,"Submitting your original to the backend.")))
         val r=result {
             val rows=JSONArray(api.request("api/scan",JSONObject().put("contentId",contentId).toString())).objects().map(::caseFrom)
-            refresh();ScanProgress(ScanStage.DONE,"Server scan complete. Discovery is synthetic; outreach remains sandboxed.",rows.size,rows.map { it.id })
+            refresh();ScanProgress(ScanStage.DONE,"Comparison complete. Review the evidence.",rows.size,rows.map { it.id })
         }
         emit(r)
     }.flowOn(Dispatchers.IO)
@@ -90,12 +90,7 @@ class RemoteDittoRepository(private val context: Context, private val session: S
     override suspend fun runFollowUp(caseId:String,outcome:FollowUpOutcome)=mutate(caseId,"simulate-followup",JSONObject().put("outcome",outcome.wire))
     override suspend fun resolve(caseId:String,note:String?)=mutate(caseId,"resolve",JSONObject().put("note",note))
     override suspend fun casesAwaitingFollowUp()=cases.value.filter { it.state==CaseState.AWAITING_RESPONSE }
-    override suspend fun seedDemoData(force:Boolean): DittoResult<Int> = result {
-        require(!force) { "Server audit data cannot be reset. Create another test account." }
-        val n=JSONObject(api.request("api/demo/seed","{}")).getInt("casesCreated");refresh();n
-    }
-    override suspend fun resetDemoData(): DittoResult<Int> = DittoResult.Err("Server audit data cannot be reset. Create another test account.")
-    suspend fun advanceClock(): DittoResult<Int> = result { val n=JSONObject(api.request("api/demo/advance-clock","{}")).getInt("casesChecked");refresh();n }
+
 }
 
 private fun JSONArray.objects()=(0 until length()).map { getJSONObject(it) }

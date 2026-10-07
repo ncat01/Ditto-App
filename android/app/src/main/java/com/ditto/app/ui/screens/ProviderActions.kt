@@ -16,6 +16,9 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.isActive
+import androidx.lifecycle.repeatOnLifecycle
 import android.content.Intent
 import android.net.Uri
 import androidx.lifecycle.Lifecycle
@@ -32,7 +35,7 @@ import androidx.activity.result.contract.ActivityResultContracts
 
 private fun connectedApi(context: android.content.Context): BackendApi {
     val session=BackendConnection(context).session() ?: error("Sign into your Ditto cloud account first.")
-    return BackendApi(session.endpoint,session.token)
+    return BackendApi(session.endpoint,session.token) { com.ditto.app.core.BackendConnection(context).accessToken(session.userId) }
 }
 
 @Composable
@@ -53,22 +56,31 @@ fun EmailOutreachCard(caseId: String, body: String) {
         catch(e:Exception) { configured=false }
     }
     if(!configured) {
-        Text("Email outreach is currently unavailable. You can review evidence and edit your draft.",style=MaterialTheme.typography.bodySmall)
-        return
+        Text("Open your reviewed draft in your phone's email app. You choose when to send it; Ditto cannot confirm delivery.",style=MaterialTheme.typography.bodySmall)
     }
     Text("Email a reviewed request",style=MaterialTheme.typography.titleSmall)
     OutlinedTextField(recipient,{recipient=it.take(254)},label={Text("Confirmed recipient email")},singleLine=true,enabled=!busy,modifier=Modifier.fillMaxWidth())
     Row { Checkbox(reviewed,{reviewed=it},enabled=!busy); Text("I checked ownership, permission and the recipient.",style=MaterialTheme.typography.bodySmall) }
-    Row { Checkbox(reminder,{reminder=it},enabled=!busy); Text("Remind me to review this in 7 days. No automatic follow-up email.",style=MaterialTheme.typography.bodySmall) }
-    SecondaryButton(text=if(busy) "Checking delivery status" else "Review and send email",
+    if(configured) Row { Checkbox(reminder,{reminder=it},enabled=!busy); Text("Remind me to review this in 7 days. No automatic follow-up email.",style=MaterialTheme.typography.bodySmall) }
+    SecondaryButton(text=if(busy) "Checking delivery status" else if(configured) "Review and send email" else "Open email draft",
         enabled=!busy && reviewed && body.isNotBlank() && recipient.matches(Regex("[^\\s@]+@[^\\s@]+\\.[^\\s@]+")),
         modifier=Modifier.fillMaxWidth(),onClick={confirm=true})
     message?.let { Text(it,style=MaterialTheme.typography.bodySmall) }
-    if(confirm) AlertDialog(onDismissRequest={confirm=false},title={Text("Send to $recipient?")},
-        text={ Column { Text(body.take(4000)); Text("This sends a real email. Your verified account email is used for replies.",style=MaterialTheme.typography.bodySmall) } },
+    if(confirm) AlertDialog(onDismissRequest={confirm=false},title={Text(if(configured) "Send to $recipient?" else "Open draft to $recipient?")},
+        text={ Column { Text(body.take(4000)); Text(if(configured) "This sends a real email. Your verified account email is used for replies." else "Your email app opens with this recipient and message. Review and send there. Ditto keeps this case awaiting review.",style=MaterialTheme.typography.bodySmall) } },
         dismissButton={TextButton(onClick={confirm=false}) {Text("Cancel")}},
         confirmButton={TextButton(onClick={
             confirm=false;busy=true
+            if(!configured) {
+                try {
+                    context.startActivity(Intent(Intent.ACTION_SENDTO,Uri.fromParts("mailto",recipient,null))
+                        .putExtra(Intent.EXTRA_SUBJECT,"Content credit inquiry")
+                        .putExtra(Intent.EXTRA_TEXT,body))
+                    message="Draft opened. Sending and delivery are handled by your email app."
+                } catch(e:android.content.ActivityNotFoundException) { message="Install or configure an email app to open this draft." }
+                busy=false
+                return@TextButton
+            }
             scope.launch {
                 try {
                     withContext(Dispatchers.IO) {
@@ -84,7 +96,7 @@ fun EmailOutreachCard(caseId: String, body: String) {
                 catch(e:Exception) {message=e.message ?: "Delivery not confirmed. Check status before sending again."}
                 finally {busy=false}
             }
-        }) {Text("Send approved email")}})
+        }) {Text(if(configured) "Send approved email" else "Open reviewed draft")}})
 }
 
 @Composable
@@ -110,23 +122,30 @@ fun InstagramConnectionCard() {
             finally { busy = false }
         }
     }
-    DisposableEffect(lifecycleOwner) {
-        val observer = LifecycleEventObserver { _, event ->
-            if (event == Lifecycle.Event.ON_RESUME) refresh()
+    LaunchedEffect(lifecycleOwner) {
+        lifecycleOwner.lifecycle.repeatOnLifecycle(Lifecycle.State.STARTED) {
+            while(isActive) {
+                try {
+                    status=withContext(Dispatchers.IO) {
+                        JSONObject(connectedApi(context).request("api/integrations/instagram/status"))
+                    }
+                    if(status?.optBoolean("connected")==true) message=null
+                } catch(e:CancellationException) { throw e }
+                catch(e:Exception) { message="Could not check Instagram. We'll retry automatically." }
+                delay(if(status?.optBoolean("connected")==true) 30_000 else 5_000)
+            }
         }
-        lifecycleOwner.lifecycle.addObserver(observer)
-        onDispose { lifecycleOwner.lifecycle.removeObserver(observer) }
     }
-    LaunchedEffect(Unit) { refresh() }
     val connected = status?.optBoolean("connected") == true
     DittoCard {
-        Text("Connect Instagram", style = MaterialTheme.typography.titleMedium)
+        Text(if(connected) "Instagram connected" else "Connect Instagram", style = MaterialTheme.typography.titleMedium)
+        if(connected) com.ditto.app.ui.components.StatusPill("Connected",com.ditto.app.ui.theme.DittoColors.Success,androidx.compose.ui.graphics.Color(0xFFD6F5EA))
         Text(if (connected) "Connected as @${status?.optString("username")}" else
             "Link your Creator or Business account through Instagram to import your own videos. You can also upload originals from your device.",
             style = MaterialTheme.typography.bodySmall)
         Spacer(Modifier.height(8.dp))
         if (!connected) {
-            SecondaryButton(text = if (busy) "Checking connection?" else "Continue with Instagram",
+            SecondaryButton(text = if (busy) "Checking connection…" else "Continue with Instagram",
                 enabled = !busy && status?.optBoolean("configured") == true,
                 modifier = Modifier.fillMaxWidth(), onClick = {
                     busy = true; message = null
@@ -149,17 +168,23 @@ fun InstagramConnectionCard() {
                         finally { busy = false }
                     }
                 })
+            TextButton(
+                enabled = !busy,
+                modifier = Modifier.fillMaxWidth(),
+                onClick = {
+                    context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse("https://www.instagram.com/accounts/logout/")))
+                    message = "Sign out of the current Instagram account in your browser, then return and continue with Instagram again."
+                }
+            ) { Text("Switch Instagram account") }
             if (status?.optBoolean("configured") == false)
                 Text("Instagram connection is currently unavailable. Device uploads still work.", style = MaterialTheme.typography.bodySmall)
         }
-        SecondaryButton(text = "Refresh connection", enabled = !busy,
-            onClick = { refresh() }, modifier = Modifier.fillMaxWidth())
         if (connected) TextButton(enabled = !busy, onClick = { confirmDisconnect = true }) { Text("Disconnect Instagram") }
         message?.let { Text(it, style = MaterialTheme.typography.bodySmall) }
     }
     if (confirmDisconnect) AlertDialog(onDismissRequest = { confirmDisconnect = false },
         title = { Text("Disconnect Instagram?") },
-        text = { Text("Ditto will remove its stored Instagram connection. Imported originals remain in your library. You can also remove Ditto from Instagram?s Apps and websites settings.") },
+        text = { Text("Ditto will remove its stored Instagram connection. Imported originals remain in your library. You can also remove Ditto from Instagram's Apps and websites settings.") },
         dismissButton = { TextButton(onClick = { confirmDisconnect = false }) { Text("Cancel") } },
         confirmButton = { TextButton(onClick = {
             confirmDisconnect = false; busy = true
@@ -288,7 +313,7 @@ fun AccountSecurityCard() {
 
 
 @Composable
-fun ContentDiscoveryCard(contentId: String) {
+fun ContentDiscoveryCard(contentId: String, onOpenCase: (String) -> Unit) {
     val context=LocalContext.current
     val scope=rememberCoroutineScope()
     var busy by remember {mutableStateOf(false)}
@@ -296,6 +321,8 @@ fun ContentDiscoveryCard(contentId: String) {
     var results by remember {mutableStateOf<List<JSONObject>>(emptyList())}
     var confirmSearch by remember {mutableStateOf(false)}
     var configured by remember {mutableStateOf(false)}
+    var currentStep by remember(contentId) {mutableStateOf<String?>(null)}
+    var completedCaseId by remember(contentId) {mutableStateOf<String?>(null)}
     LaunchedEffect(contentId) {
         try {configured=withContext(Dispatchers.IO) {JSONObject(connectedApi(context).request("api/discovery/status")).optBoolean("configured")}}
         catch(e:CancellationException) {throw e}
@@ -303,7 +330,7 @@ fun ContentDiscoveryCard(contentId: String) {
     }
     val picker=rememberLauncherForActivityResult(ActivityResultContracts.PickVisualMedia()) { uri ->
         if(uri!=null) {
-            busy=true;message=null
+            busy=true;message=null;completedCaseId=null;currentStep="Uploading the suspected copy"
             scope.launch {
                 try {
                     val result=withContext(Dispatchers.IO) {
@@ -318,24 +345,37 @@ fun ContentDiscoveryCard(contentId: String) {
                             .addFormDataPart("file","candidate",data.toRequestBody(mime.toMediaType())).build()
                         val api=connectedApi(context)
                         JSONObject(if(api.supportsChunkedUpload()) api.uploadMedia(data,mime,"Submitted comparison","Submitted evidence",contentId)
-                            else api.request("api/discovery/$contentId/compare",body=body))
+                            else api.awaitResult("api/discovery/$contentId/compare-job",body=body))
                     }
-                    message="Measured similarity: ${(result.getDouble("similarity")*100).toInt()}%. ${result.getString("algorithm")}. ${result.getString("notice") }"
+                    (ServiceLocator.repository(context) as? RemoteDittoRepository)?.refresh()
+                    completedCaseId=result.optString("caseId").takeIf {it.isNotBlank()}
+                    currentStep="Comparison complete"
+                    message="Similarity: ${(result.getDouble("similarity")*100).toInt()}%. Review the source, publication date and permission before taking action."
                 } catch(e:CancellationException) {throw e}
-                catch(e:Exception) {message=e.message ?: "Comparison unavailable."}
+                catch(e:Exception) {currentStep="Comparison stopped";message=e.message ?: "Comparison unavailable."}
                 finally {busy=false}
             }
         }
     }
     DittoCard {
         Text("Find and compare reposts",style=MaterialTheme.typography.titleMedium)
-        Text("Search leads on the public web, or select a suspected repost to compare against this original. Use the same media type.",style=MaterialTheme.typography.bodySmall)
+        Text("Start with a web search for copies. If you already have a suspected repost, select that file for a direct comparison.",style=MaterialTheme.typography.bodySmall)
+        if(busy) {
+            LinearProgressIndicator(modifier=Modifier.fillMaxWidth())
+            currentStep?.let {Text(it,style=MaterialTheme.typography.bodySmall)}
+        } else currentStep?.let {Text(it,style=MaterialTheme.typography.labelMedium)}
         SecondaryButton(text="Compare a suspected repost",enabled=!busy,modifier=Modifier.fillMaxWidth(),onClick={picker.launch(PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageAndVideo))})
-        SecondaryButton(text=if(busy) "Working?" else "Reverse search the web",enabled=!busy && configured,modifier=Modifier.fillMaxWidth(),onClick={confirmSearch=true})
+        SecondaryButton(text=if(busy) "Searching..." else "Search for matching posts",enabled=!busy && configured,modifier=Modifier.fillMaxWidth(),onClick={confirmSearch=true})
         if(!configured) Text("Web search is currently unavailable. Candidate comparison is available for your uploaded originals.",style=MaterialTheme.typography.bodySmall)
         message?.let {Text(it,style=MaterialTheme.typography.bodySmall)}
+        completedCaseId?.let { caseId ->
+            SecondaryButton(text="Review comparison",enabled=!busy,modifier=Modifier.fillMaxWidth(),onClick={onOpenCase(caseId)})
+        }
         results.forEach { result ->
-            Text(result.optString("title").ifBlank {"Unverified search lead"},style=MaterialTheme.typography.titleSmall)
+            val exact=result.optString("matchType")=="exact"
+            Text(if(exact) "Exact match" else "Possible visual match",style=MaterialTheme.typography.labelMedium)
+            Text(result.optString("title").ifBlank {"Possible matching post"},style=MaterialTheme.typography.titleSmall)
+            result.optString("source").takeIf {it.isNotBlank()}?.let {Text(it,style=MaterialTheme.typography.bodySmall)}
             Text(result.getString("url"),style=MaterialTheme.typography.bodySmall,maxLines=2)
             TextButton(onClick={
                 val uri=Uri.parse(result.getString("url"))
@@ -344,19 +384,21 @@ fun ContentDiscoveryCard(contentId: String) {
             }) {Text("Review source in browser")}
         }
     }
-    if(confirmSearch) AlertDialog(onDismissRequest={confirmSearch=false},title={Text("Search with Google?")},
-        text={Text("Ditto sends this image, or five sampled video frames, to Google Vision Web Detection. Results are unverified leads and may miss reposts. Nothing is sent to the source account.")},
+    if(confirmSearch) AlertDialog(onDismissRequest={confirmSearch=false},title={Text("Search with Google Lens?")},
+        text={Text("Ditto sends this image, or five sampled video frames, to SerpApi for Google Lens search. Results are unverified leads and may miss reposts. Nothing is sent to the source account.")},
         dismissButton={TextButton(onClick={confirmSearch=false}) {Text("Cancel")}},
         confirmButton={TextButton(onClick={
-            confirmSearch=false;busy=true;message=null;results=emptyList()
+            confirmSearch=false;busy=true;message=null;results=emptyList();completedCaseId=null
+            currentStep="Checking exact matches and similar frames"
             scope.launch {
                 try {
-                    val result=withContext(Dispatchers.IO) {JSONObject(connectedApi(context).awaitResult("api/discovery/$contentId/web-search","{\"consent_to_google\":true}"))}
+                    val result=withContext(Dispatchers.IO) {JSONObject(connectedApi(context).awaitResult("api/discovery/$contentId/web-search","{\"consent_to_search_provider\":true}"))}
                     val rows=result.getJSONArray("results")
                     results=(0 until rows.length()).map {rows.getJSONObject(it)}
-                    message=if(results.isEmpty()) "No web leads returned. This does not establish that no reposts exist." else result.getString("notice")
+                    currentStep="Search complete"
+                    message=if(results.isEmpty()) "No publicly indexed match was found. You can still compare a suspected copy directly." else result.getString("notice")
                 } catch(e:CancellationException) {throw e}
-                catch(e:Exception) {message=e.message ?: "Search unavailable."}
+                catch(e:Exception) {currentStep="Search stopped";message=e.message ?: "Search unavailable."}
                 finally {busy=false}
             }
         }) {Text("Search")}})

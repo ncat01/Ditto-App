@@ -12,7 +12,6 @@ from app.api.routes import router
 from app.api.auth import router as auth_router
 from app.config import get_settings
 from app.database.db import SessionLocal, init_db
-from app.services.seed import seed
 
 logging.basicConfig(level=logging.INFO)
 logging.getLogger("httpx").setLevel(logging.WARNING)
@@ -24,23 +23,25 @@ settings = get_settings()
 @asynccontextmanager
 async def lifespan(_: FastAPI):
     if not settings.demo_mode:
-        from app.services.instagram_oauth import require_oauth
-        from app.services.account_email import require_email
-        require_oauth(); require_email()
         if not settings.support_email or not settings.operator_name:
             raise RuntimeError("Production requires SUPPORT_EMAIL and OPERATOR_NAME.")
     init_db()
     from app.services.account_deletion import purge_media
     purge_media()
-    db = SessionLocal()
+    logger.info("Ditto backend ready.")
+    import threading
+    stop = threading.Event()
+    worker = None
+    if settings.processing_worker_enabled:
+        from app.services.processing import run
+        worker = threading.Thread(target=run, args=(stop,), daemon=True, name='ditto-processing')
+        worker.start()
     try:
-        created = 0  # Each authenticated user explicitly seeds their own corpus.
-        if created:
-            logger.info("Seeded %s demo cases", created)
+        yield
     finally:
-        db.close()
-    logger.info("Ditto backend ready. Demo mode: %s", settings.demo_mode)
-    yield
+        stop.set()
+        if worker:
+            worker.join(timeout=10)
 
 
 app = FastAPI(
@@ -95,3 +96,5 @@ from app.api.web_search import router as web_search_router
 app.include_router(web_search_router)
 from app.api.legal_pages import router as legal_pages_router
 app.include_router(legal_pages_router)
+from app.api.processing import router as processing_router
+app.include_router(processing_router)

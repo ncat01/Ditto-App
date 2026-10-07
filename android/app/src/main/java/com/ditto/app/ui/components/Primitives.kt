@@ -26,6 +26,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.semantics.clearAndSetSemantics
 import androidx.compose.ui.text.style.TextOverflow
@@ -58,9 +59,10 @@ fun DittoCard(
 ) {
     val base = modifier
         .fillMaxWidth()
-        .clip(RoundedCornerShape(22.dp))
+        .shadow(3.dp, RoundedCornerShape(24.dp), ambientColor = DittoColors.PrimaryBlue.copy(alpha = .10f))
+        .clip(RoundedCornerShape(24.dp))
         .background(background)
-        .border(BorderStroke(1.dp, borderColor), RoundedCornerShape(22.dp))
+        .border(BorderStroke(1.dp, borderColor.copy(alpha = .86f)), RoundedCornerShape(24.dp))
     Column(
         modifier = (if (onClick != null) base.clickable(onClick = onClick) else base)
             .padding(contentPadding.dp),
@@ -98,7 +100,7 @@ fun StatusPill(
 ) {
     Box(
         modifier = modifier
-            .clip(RoundedCornerShape(4.dp))
+            .clip(RoundedCornerShape(50.dp))
             .background(bg)
             .padding(horizontal = 8.dp, vertical = 4.dp)
     ) {
@@ -279,7 +281,7 @@ fun SignalRow(
 
 /** Banner that states plainly whether data is simulated (report §51). */
 @Composable
-fun DemoModeBanner(text: String, modifier: Modifier = Modifier) {
+fun ServiceNotice(text: String, modifier: Modifier = Modifier) {
     Row(
         modifier = modifier
             .fillMaxWidth()
@@ -323,7 +325,7 @@ fun PrimaryButton(
 ) {
     Surface(
         modifier = modifier.height(48.dp),
-        shape = RoundedCornerShape(18.dp),
+        shape = RoundedCornerShape(16.dp),
         color = if (enabled) DittoColors.PrimaryBlue else DittoColors.SurfaceSunken,
         onClick = onClick,
         enabled = enabled
@@ -348,7 +350,7 @@ fun SecondaryButton(
 ) {
     Surface(
         modifier = modifier.height(48.dp),
-        shape = RoundedCornerShape(18.dp),
+        shape = RoundedCornerShape(16.dp),
         color = DittoColors.Surface,
         border = BorderStroke(1.dp, DittoColors.Border),
         onClick = onClick,

@@ -47,7 +47,6 @@ import androidx.lifecycle.viewmodel.compose.viewModel
 import com.ditto.app.domain.model.ContentItem
 import com.ditto.app.domain.model.ScanStage
 import com.ditto.app.ui.components.CaseCard
-import com.ditto.app.ui.components.DemoModeBanner
 import com.ditto.app.ui.components.DittoCard
 import com.ditto.app.ui.components.EvidenceVisual
 import com.ditto.app.ui.components.Eyebrow
@@ -69,7 +68,7 @@ private val SCAN_STAGES = listOf(
 )
 
 @Composable
-fun ScanScreen(onOpenCase: (String) -> Unit) {
+fun ScanScreen(onOpenCase: (String) -> Unit, onHome: () -> Unit) {
     val scanVm: ScanViewModel = viewModel(factory = ScanViewModel.Factory)
     val appVm: DittoViewModel = viewModel(factory = DittoViewModel.Factory)
     val state by scanVm.state.collectAsStateWithLifecycle()
@@ -96,7 +95,10 @@ fun ScanScreen(onOpenCase: (String) -> Unit) {
         verticalArrangement = Arrangement.spacedBy(16.dp)
     ) {
         item {
-            Eyebrow("Scan")
+            Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                Eyebrow("Find copies", modifier = Modifier.weight(1f))
+                androidx.compose.material3.TextButton(onClick = onHome) { Text("Home") }
+            }
             Spacer(Modifier.height(6.dp))
             Text(
                 "Your originals",
@@ -111,7 +113,16 @@ fun ScanScreen(onOpenCase: (String) -> Unit) {
             )
         }
 
-        item { DemoModeBanner(scanVm.discoveryName) }
+        item {
+            DittoCard(background = DittoColors.BlueTint.copy(alpha = .88f)) {
+                Eyebrow("What happens next")
+                Spacer(Modifier.height(10.dp))
+                WorkflowStep("1", "Choose your original", "Import it from Instagram or select a file you own.")
+                WorkflowStep("2", "Search for copies", "Ditto checks exact and visually similar matches across publicly indexed pages.")
+                WorkflowStep("3", "Review the evidence", "Open possible sources, confirm the account and post date, then decide what to do.")
+            }
+        }
+
         if(com.ditto.app.core.BackendConnection(context).enabled()) {
             item { InstagramConnectionCard() }
             item { InstagramImportCard(onImported = { scanVm.clear() }) }
@@ -150,97 +161,32 @@ fun ScanScreen(onOpenCase: (String) -> Unit) {
             item {
                 SelectedContentCard(
                     content = state.selectedContent!!,
-                    matcherName = scanVm.matcherName,
                     onChange = { scanVm.clear() }
                 )
             }
         }
 
         state.selectedContent?.let { selected ->
-            item {
-                Text("Scan history",style=MaterialTheme.typography.titleMedium)
-                if(com.ditto.app.core.BackendConnection(context).enabled()) {
-                    ServerScanHistory(selected.id,state.isScanning)
-                } else {
-                    val db=com.ditto.app.data.local.DittoDatabase.get(context,com.ditto.app.core.ServiceLocator.activeUser!!)
-                    val jobs by androidx.compose.runtime.remember(selected.id) { db.scanJobDao().observe(selected.id) }.collectAsStateWithLifecycle(initialValue=emptyList())
-                    jobs.take(5).forEach { job -> Text("${relativeTime(job.startedAt)} • ${job.stage} • ${job.candidates} candidates${job.error?.let { " • $it" } ?: ""}",style=MaterialTheme.typography.bodySmall) }
-                    if(jobs.isEmpty()) Text("No scan has run for this original yet.",style=MaterialTheme.typography.bodySmall)
-                }
-                selected.localUri?.let { uri -> if(selected.kind==com.ditto.app.domain.model.ContentKind.VIDEO || uri.endsWith(".mp4")) com.ditto.app.ui.components.VideoPreview(uri,"Preview your original") }
-            }
+            item { ContentDiscoveryCard(selected.id, onOpenCase) }
         }
-        state.selectedContent?.let { selected ->
-            if(com.ditto.app.core.BackendConnection(context).enabled()) item {
-                androidx.compose.runtime.key(selected.id) { ContentDiscoveryCard(selected.id) }
-            }
-        }
-        // --- error ---
         state.error?.let { message ->
-            item { ScanErrorCard(message = message, onRetry = { scanVm.startScan() }) }
+            item { DittoCard { Text(message,style=MaterialTheme.typography.bodySmall) } }
         }
 
-        // --- scan action / progress ---
-        if (com.ditto.app.BuildConfig.DEBUG && !com.ditto.app.core.BackendConnection(context).enabled() && state.selectedContent != null && state.stage == ScanStage.IDLE) {
-            item {
-                PrimaryButton(
-                    text = "Run sample scan",
-                    onClick = { scanVm.startScan() },
-                    modifier = Modifier.fillMaxWidth()
-                )
-            }
-        }
+    }
+}
 
-        if (state.stage != ScanStage.IDLE) {
-            item {
-                ScanProgressCard(
-                    currentStage = state.stage,
-                    message = state.stageMessage,
-                    isScanning = state.isScanning
-                )
-            }
-        }
-
-        // --- results ---
-        if (state.stage == ScanStage.DONE) {
-            item {
-                SectionHeading(
-                    if (state.candidatesFound == 0) "No potential matches found"
-                    else "${state.candidatesFound} potential match" +
-                        "${if (state.candidatesFound == 1) "" else "es"} found"
-                )
-            }
-
-            if (state.results.isEmpty() && state.candidatesFound == 0) {
-                item {
-                    DittoCard {
-                        Text(
-                            "Nothing found this time.",
-                            style = MaterialTheme.typography.titleMedium,
-                            color = DittoColors.TextPrimary
-                        )
-                        Spacer(Modifier.height(4.dp))
-                        Text(
-                            "Ditto checked the discovery corpus and found no candidate reuse " +
-                                "of this content. It stays monitored for future scans.",
-                            style = MaterialTheme.typography.bodyMedium,
-                            color = DittoColors.TextSecondary
-                        )
-                    }
-                }
-            } else {
-                items(state.results, key = { it.id }) { case ->
-                    CaseCard(case = case, onClick = { onOpenCase(case.id) })
-                }
-            }
-
-            item {
-                SecondaryButton(
-                    text = "Scan something else",
-                    onClick = { scanVm.clear() },
-                    modifier = Modifier.fillMaxWidth()
-                )
-            }
+@Composable
+private fun WorkflowStep(number: String, title: String, detail: String) {
+    Row(Modifier.fillMaxWidth().padding(vertical = 6.dp), verticalAlignment = Alignment.Top) {
+        Box(
+            Modifier.size(28.dp).clip(CircleShape).background(DittoColors.PrimaryBlue),
+            contentAlignment = Alignment.Center
+        ) { Text(number, style = MaterialTheme.typography.labelMedium, color = DittoColors.TextOnDark) }
+        Spacer(Modifier.width(10.dp))
+        Column(Modifier.weight(1f)) {
+            Text(title, style = MaterialTheme.typography.titleSmall, color = DittoColors.TextPrimary)
+            Text(detail, style = MaterialTheme.typography.bodySmall, color = DittoColors.TextSecondary)
         }
     }
 }
@@ -252,7 +198,7 @@ private fun ServerScanHistory(id: String, scanning: Boolean) {
         value=kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
             try {
                 val session=com.ditto.app.core.BackendConnection(context).session() ?: error("Sign in again.")
-                val rows=org.json.JSONArray(com.ditto.app.core.BackendApi(session.endpoint,session.token).request("api/content/$id/scans"))
+                val rows=org.json.JSONArray(com.ditto.app.core.BackendApi(session.endpoint,session.token) { com.ditto.app.core.BackendConnection(context).accessToken(session.userId) }.request("api/content/$id/scans"))
                 if(rows.length()==0) listOf("No server scan has run for this original yet.")
                 else (0 until minOf(5,rows.length())).map { i-> val j=rows.getJSONObject(i);"${j.getString("stage")} • ${j.getInt("candidates")} candidates • ${j.getString("createdAt")}" }
             } catch(e:kotlinx.coroutines.CancellationException) { throw e } catch(e:Exception) { listOf("Processing history unavailable. Check your connection and refresh.") }
@@ -291,7 +237,7 @@ private fun UploadDropZone(isBusy: Boolean, onChoose: () -> Unit) {
         )
         Spacer(Modifier.height(4.dp))
         Text(
-            if (isBusy) "Generating a perceptual fingerprint"
+            if (isBusy) "Preparing your original for matching"
             else "Choose an image or video from your device",
             style = MaterialTheme.typography.bodySmall,
             color = DittoColors.TextSecondary,
@@ -337,7 +283,6 @@ private fun ContentRow(item: ContentItem, onClick: () -> Unit) {
 @Composable
 private fun SelectedContentCard(
     content: ContentItem,
-    matcherName: String,
     onChange: () -> Unit
 ) {
     DittoCard {
@@ -358,16 +303,7 @@ private fun SelectedContentCard(
                     color = DittoColors.TextPrimary
                 )
                 Spacer(Modifier.height(6.dp))
-                Text(
-                    "pHash ${content.perceptualHash.take(16)}",
-                    style = MaterialTheme.typography.bodySmall,
-                    color = DittoColors.TextSecondary
-                )
-                Text(
-                    matcherName,
-                    style = MaterialTheme.typography.bodySmall,
-                    color = DittoColors.TextTertiary
-                )
+                Text("Ready to search and compare", style = MaterialTheme.typography.bodySmall, color = DittoColors.TextSecondary)
             }
         }
         Spacer(Modifier.height(12.dp))

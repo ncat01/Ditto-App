@@ -10,9 +10,9 @@ from PIL import Image
 from app.config import Settings
 from app.database.db import SessionLocal
 from app.main import app
-from app.models.account_security import RequestBudget
+from app.models.account_security import RequestBudget, WebSearchRecord
 from app.models.jobs import ProcessingJob
-from app.models.tables import Content
+from app.models.tables import Content, Case, User
 from app.providers.web_search import SearchUnavailable
 from app.services import search_jobs
 from app.services.processing import process_next, process_search_next
@@ -193,3 +193,73 @@ def test_search_rejects_files_outside_owner_storage(configured):
             'consent_to_search_provider': True, 'request_id': secrets.token_hex(16)})
         assert response.status_code == 409
         assert client.get(endpoint, headers=owner).json()['jobId'] is None
+
+
+def test_locked_provider_claim_refreshes_cached_state_after_recovery(configured, monkeypatch):
+    with TestClient(app) as client:
+        owner = signup(client)
+        content = upload(client, owner)
+        submitted = client.post('/api/discovery/' + content + '/web-search-job',
+            headers=owner, json={'consent_to_search_provider': True,
+                                 'request_id': secrets.token_hex(16)})
+        job_id = submitted.json()['jobId']
+        calls = []
+        monkeypatch.setattr(search_jobs, 'search', lambda images: calls.append(True) or [])
+        with SessionLocal() as db:
+            job = db.get(ProcessingJob, job_id)
+            real_scalar = db.scalar
+
+            def recover_before_locked_read(statement, *args, **kwargs):
+                # Simulate a paused claimant losing its receipt to recovery
+                # after the durable running commit, before it obtains the lock.
+                with SessionLocal() as recovery:
+                    recovered = recovery.get(ProcessingJob, job_id)
+                    assert recovered.state == 'running'
+                    recovered.state = 'unknown'
+                    recovery.commit()
+                return real_scalar(statement, *args, **kwargs)
+
+            monkeypatch.setattr(db, 'scalar', recover_before_locked_read)
+            search_jobs.deliver(db, job)
+        assert calls == []
+        assert client.get('/api/jobs/' + job_id, headers=owner).json()['state'] == 'unknown'
+
+
+def test_account_deletion_snapshots_include_results_from_inflight_jobs(configured, monkeypatch):
+    from app.services.account_deletion import delete_records
+    with TestClient(app) as client:
+        owner = signup(client)
+        content = upload(client, owner)
+        comparison = client.post('/api/discovery/' + content + '/compare-job', headers=owner,
+            files={'file': ('candidate.png', image(), 'image/png')})
+        searched = client.post('/api/discovery/' + content + '/web-search-job', headers=owner,
+            json={'consent_to_search_provider': True, 'request_id': secrets.token_hex(16)})
+        assert comparison.status_code == searched.status_code == 202
+        with SessionLocal() as db:
+            user_id = db.get(Content, content).user_id
+            real_scalars = db.scalars
+            synchronized = []
+
+            def finish_inflight_before_lock_returns(statement, *args, **kwargs):
+                if (statement._for_update_arg is not None and
+                        statement.column_descriptions[0].get('entity') is ProcessingJob):
+                    # PostgreSQL would wait for workers holding these rows. Make
+                    # their actual commits happen at the same synchronization
+                    # point, so deletion must snapshot newly created children.
+                    assert not synchronized
+                    assert process_next(include_search=False)
+                    assert process_search_next()
+                    with SessionLocal() as results:
+                        assert results.query(Case).filter(Case.content_id == content).count() == 1
+                        assert results.query(WebSearchRecord).filter(WebSearchRecord.content_id == content).count() == 1
+                    synchronized.append(True)
+                return real_scalars(statement, *args, **kwargs)
+
+            monkeypatch.setattr(db, 'scalars', finish_inflight_before_lock_returns)
+            delete_records(db, user_id)
+            assert synchronized == [True]
+        with SessionLocal() as db:
+            assert db.get(User, user_id) is None
+            assert db.get(Content, content) is None
+            assert not db.query(Case).filter(Case.content_id == content).count()
+            assert not db.query(WebSearchRecord).filter(WebSearchRecord.content_id == content).count()

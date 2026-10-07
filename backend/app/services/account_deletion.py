@@ -8,6 +8,12 @@ from app.models.account_security import MediaDeletion
 
 def delete_records(db, user_id):
     from app.models.remote_media import RemoteMedia, RemoteMediaDeletion
+    from app.models.jobs import ProcessingJob
+    # Finish in-flight work before taking dependent record/case snapshots. A
+    # worker holds its receipt row until result creation commits. Waiting later
+    # in the deletion loop could miss those newly created child records.
+    db.scalars(select(ProcessingJob).where(ProcessingJob.user_id == user_id)
+               .order_by(ProcessingJob.id).with_for_update()).all()
     for file_id in db.scalars(select(RemoteMedia.file_id).where(RemoteMedia.user_id == user_id)):
         if not db.get(RemoteMediaDeletion, file_id):
             db.add(RemoteMediaDeletion(file_id=file_id))

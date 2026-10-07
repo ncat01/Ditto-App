@@ -182,7 +182,7 @@ def deliver(db, job):
     # Hold a row lock through the provider request. A second live worker cannot
     # mistake this committed running receipt for an interrupted search.
     job = db.scalar(select(ProcessingJob).where(ProcessingJob.id == identity)
-                    .with_for_update())
+                    .with_for_update().execution_options(populate_existing=True))
     if not job or job.state != 'running':
         return
     try:

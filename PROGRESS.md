@@ -162,3 +162,35 @@ SerpApi activation completed: clipboard key privately saved and provider account
   handset was locked during capture, so final owner visual acceptance remains pending.
   Meta public-user approval, an email sender, and store review remain external launch
   requirements; this build does not claim those approvals.
+
+### Downloadable signed release 1.8.8 (2026-10-08)
+- Exact and visual Lens queries now run explicitly for images and five sampled video
+  frames. Successful empty responses no longer abort the remaining queries. Search
+  jobs persist progress/results, protect repeated submissions and restore results on
+  returning to the original. Live generated-image search returned unverified leads;
+  this does not establish exhaustive public Instagram or copied-Reel coverage.
+- Comparison screens include Home navigation. Case cards, detail percentages and
+  filters use measured content similarity. Customer-facing rule-score labels and the
+  synthetic likeness category choice were removed. Images display as private image
+  evidence; videos retain playback. Home/Cases use actual downloaded original previews.
+- Backend deployment `cca7b51a-d7ff-41c5-ba3b-054b29cbddda` succeeded on the existing
+  Railway trial service, commit `50e227be91a1363c533f5a716a76c38556042850`. Live case
+  list/detail identify image evidence correctly, and protected original/candidate PNG
+  bytes match. All 120 backend tests pass, including actual image/video media checks.
+- Android 18 unit tests, release lint, R8, APK and AAB builds pass. Package
+  `com.ditto.app`, version 1.8.8/code 17, target API 36. APK v2 signing matches the
+  retained owner certificate; AAB signature and APK 16 KB ZIP alignment verified.
+- Final signed APK installed and launched on the Android emulator (cold launch 780 ms).
+  Visual checks show actual paired images, 100% content similarity and working Home
+  return. An earlier emulator GPU shader stall required a restart; the final build
+  remained responsive. No physical phone is connected; handset acceptance is pending.
+- Generated UI verification account, its content/case and private credential fixture
+  were removed. The emulator's test session was cleared.
+- Deliverables: `apk/DITTO-1.8.8-release.apk`, `apk/DITTO-1.8.8-release.aab` and the
+  workstation `releases/Ditto-1.8.8.zip` with installation instructions/checksums.
+  APK SHA-256: `65b85ebb54edaf23ed640d2937e71341def95b8758754cea16170a1f47e3755f`.
+  AAB SHA-256: `d059146f495a7841702cfa03999e989e51f079c0b9cd66c0113d82d8fc71d740`.
+- Customers can sign up, upload, search and compare without Instagram or tester roles.
+  Connecting non-role professional Instagram accounts still requires Meta Advanced
+  Access approval and publishing. Operator steps are in `docs/INSTAGRAM_SIGN_IN.md`.
+  The signed downloads do not certify public launch; `BLOCKERS.md` remains authoritative.

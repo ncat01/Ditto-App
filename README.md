@@ -8,10 +8,10 @@ Reviewed outreach opens in the phone's email app. Ditto does not claim drafts we
 
 - Package: com.ditto.app
 - API: https://ditto-api-production-7e7f.up.railway.app
-- Signed APK/AAB: apk/DITTO-1.8.5-release.apk and .aab
+- Signed APK/AAB: apk/DITTO-1.8.8-release.apk and .aab (Android 8+, target API 36)
 - Owner: Svarsha T. Support: svarsha.t@gmail.com.
 - Runtime: android/app/src/main and backend/app. Historical examples are preserved under eval and excluded from release.
 
-Backend validation: 95 passing tests. Live verification covers empty signup, private media, queued comparison/review cases, token rotation, and reverse image search. Android 1.8.5 adds the commercial visual identity, guided connection flow, focused empty home, and touch-reactive aura background. See [evidence](docs/evidence/railway-processing-release.txt), [progress](PROGRESS.md) and [remaining launch requirements](BLOCKERS.md). Working core and signing do not certify public commercial launch.
+Backend validation: 120 passing tests; Android: 18 passing unit tests, release lint, R8, signed APK and signed AAB builds. Live verification covers empty signup, private media, queued comparison/review cases, token rotation, queued reverse image search, request deduplication and restored search results. Version 1.8.8 fixes empty exact-match responses aborting search, lets searches continue after leaving the screen, restores saved results, adds Home navigation to comparisons, removes technical labels and preserves the measured percentage for submitted copies. Case cards and filters use actual content similarity. Image evidence opens as images, while video evidence retains playback. The colorful identity, guided connection flow and touch-reactive aura background remain. See [progress](PROGRESS.md), [Instagram approval steps](docs/INSTAGRAM_SIGN_IN.md) and [remaining launch requirements](BLOCKERS.md). Working core and signing do not certify public commercial launch.
 
 Keep provider credentials, uploads, databases and signing keys out of source control and APKs.

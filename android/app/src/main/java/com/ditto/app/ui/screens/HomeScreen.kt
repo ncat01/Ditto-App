@@ -75,8 +75,11 @@ fun HomeScreen(vm: DittoViewModel,onOpenCase:(String)->Unit,onSeeAllCases:()->Un
                 DittoCard(background=DittoColors.Surface.copy(alpha=.82f),borderColor=DittoColors.LightBlue) {
                     Eyebrow(if(cases.isEmpty()) "Ready when you are" else "All clear",color=DittoColors.Aqua)
                     Spacer(Modifier.height(4.dp))
-                    Text(if(cases.isEmpty()) "Add your first original to begin searching."
-                        else "Nothing needs your review right now.",
+                    Text(when {
+                        cases.isNotEmpty() -> "Nothing needs your review right now."
+                        stats.contentMonitored > 0 -> "Choose your original, then tap Find copies."
+                        else -> "Add your first original to begin searching."
+                    },
                         style=MaterialTheme.typography.titleMedium,color=DittoColors.TextPrimary)
                 }
             }

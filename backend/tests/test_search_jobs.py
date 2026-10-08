@@ -275,3 +275,103 @@ def test_account_deletion_snapshots_include_results_from_inflight_jobs(configure
             assert db.get(Content, content) is None
             assert not db.query(Case).filter(Case.content_id == content).count()
             assert not db.query(WebSearchRecord).filter(WebSearchRecord.content_id == content).count()
+
+
+def test_legacy_search_restores_all_saved_sources_read_only_and_is_owner_scoped(monkeypatch):
+    def should_not_search(images):
+        raise AssertionError('Restoring saved results must not call the search provider')
+    monkeypatch.setattr(search_jobs, 'search', should_not_search)
+    with TestClient(app) as client:
+        owner, other = signup(client), signup(client)
+        content, other_content = upload(client, owner), upload(client, other)
+        saved = [{'url': f'https://www.instagram.com/reel/saved{i}/',
+                  'title': f'Saved source {i}', 'source': 'Instagram', 'matchType': 'similar'}
+                 for i in range(50)]
+        identity = secrets.token_hex(16)
+        with SessionLocal() as db:
+            user_id = db.get(Content, content).user_id
+            other_id = db.get(Content, other_content).user_id
+            now = datetime.now(timezone.utc).replace(tzinfo=None)
+            db.add(WebSearchRecord(id=identity, user_id=user_id, content_id=content,
+                results=saved, created_at=now-timedelta(minutes=2)))
+            db.add(WebSearchRecord(id=secrets.token_hex(16), user_id=user_id, content_id=content,
+                results=[{'similarity': 1, 'algorithm': 'Visual similarity analysis'}], created_at=now))
+            # Even a malformed legacy association cannot expose another user's
+            # results through this owner's original or bypass original ownership.
+            db.add(WebSearchRecord(id=secrets.token_hex(16), user_id=other_id, content_id=content,
+                results=[{'url': 'https://example.test/private-other-result'}], created_at=now))
+            db.commit()
+            before = (db.query(ProcessingJob).count(), db.query(WebSearchRecord).count(),
+                      db.query(RequestBudget).count())
+        endpoint = '/api/discovery/' + content + '/web-search-job'
+        receipt = client.get(endpoint, headers=owner).json()
+        assert receipt['jobId'] == identity and receipt['state'] == 'complete'
+        assert receipt['result']['results'] == saved
+        assert receipt['result']['coverage'] == 'publicly_indexed_web_pages'
+        assert receipt['result']['notice'].startswith('Saved earlier search.')
+        assert 'unitsUsed' not in receipt['result']
+        assert client.get(endpoint, headers=other).status_code == 404
+        assert client.get('/api/jobs/' + identity, headers=owner).status_code == 404
+        with SessionLocal() as db:
+            assert before == (db.query(ProcessingJob).count(), db.query(WebSearchRecord).count(),
+                              db.query(RequestBudget).count())
+
+
+def test_legacy_comparison_scores_do_not_look_like_completed_web_searches():
+    with TestClient(app) as client:
+        owner = signup(client)
+        content = upload(client, owner)
+        with SessionLocal() as db:
+            db.add(WebSearchRecord(id=secrets.token_hex(16),
+                user_id=db.get(Content, content).user_id, content_id=content,
+                results=[{'similarity': 0.95, 'originalHashes': ['first'], 'candidateHashes': ['second']}],
+                created_at=datetime.now(timezone.utc).replace(tzinfo=None)))
+            db.commit()
+        receipt = client.get('/api/discovery/' + content + '/web-search-job', headers=owner).json()
+        assert receipt == {'jobId': None, 'state': None, 'result': None, 'error': None}
+
+
+def test_legacy_successful_empty_search_is_restored_even_after_a_comparison():
+    with TestClient(app) as client:
+        owner = signup(client)
+        content = upload(client, owner)
+        identity = secrets.token_hex(16)
+        with SessionLocal() as db:
+            user_id = db.get(Content, content).user_id
+            now = datetime.now(timezone.utc).replace(tzinfo=None)
+            db.add(WebSearchRecord(id=identity, user_id=user_id, content_id=content,
+                results=[], created_at=now-timedelta(minutes=1)))
+            db.add(WebSearchRecord(id=secrets.token_hex(16), user_id=user_id, content_id=content,
+                results=[{'similarity': 1}], created_at=now))
+            db.commit()
+        receipt = client.get('/api/discovery/' + content + '/web-search-job', headers=owner).json()
+        assert receipt['jobId'] == identity and receipt['state'] == 'complete'
+        assert receipt['result']['results'] == []
+        assert 'unitsUsed' not in receipt['result']
+
+
+def test_real_job_receipts_take_priority_over_legacy_results():
+    with TestClient(app) as client:
+        owner = signup(client)
+        content = upload(client, owner)
+        job_id = secrets.token_hex(16)
+        with SessionLocal() as db:
+            user_id = db.get(Content, content).user_id
+            db.add(WebSearchRecord(id=secrets.token_hex(16), user_id=user_id, content_id=content,
+                results=[{'url': 'https://example.test/old-search'}],
+                created_at=datetime.now(timezone.utc).replace(tzinfo=None)))
+            db.add(ProcessingJob(id=job_id, user_id=user_id, state='queued', payload={
+                'kind': 'web_search', 'originalId': content, 'frameCount': 1,
+                'searchUnits': 2, 'consent': True}))
+            db.commit()
+        endpoint = '/api/discovery/' + content + '/web-search-job'
+        queued = client.get(endpoint, headers=owner).json()
+        assert queued['jobId'] == job_id and queued['state'] == 'queued'
+        assert queued['result'] is None
+        with SessionLocal() as db:
+            job = db.get(ProcessingJob, job_id)
+            job.state = 'error'; job.error = 'Search provider unavailable'
+            db.commit()
+        failed = client.get(endpoint, headers=owner).json()
+        assert failed['jobId'] == job_id and failed['state'] == 'error'
+        assert failed['result'] is None

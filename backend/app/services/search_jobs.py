@@ -18,7 +18,7 @@ from app.config import get_settings
 from app.models.account_security import RequestBudget, WebSearchRecord
 from app.models.jobs import ProcessingJob
 from app.models.tables import ActivityEvent, Content
-from app.providers.web_search import query_images, search, SearchUnavailable
+from app.providers.web_search import query_images, search, safe_url, SearchUnavailable
 
 RECOVERY_GRACE = timedelta(minutes=2)
 
@@ -132,7 +132,33 @@ def latest(db, content_id):
         ProcessingJob.payload['kind'].as_string() == 'web_search',
         ProcessingJob.payload['originalId'].as_string() == content_id)
         .order_by(ProcessingJob.created_at.desc(), ProcessingJob.id.desc()).limit(1))
-    return receipt(job) if job else {'jobId': None, 'state': None, 'result': None, 'error': None}
+    if job:
+        return receipt(job)
+    # Earlier app versions saved completed searches without a ProcessingJob.
+    # Read those results directly; restoring them neither runs the provider nor
+    # creates a receipt or quota reservation. The same legacy table also holds
+    # direct comparison scores, which must not become web-search results.
+    records = db.scalars(select(WebSearchRecord).where(
+        WebSearchRecord.user_id == user_id, WebSearchRecord.content_id == content_id)
+        .order_by(WebSearchRecord.created_at.desc(), WebSearchRecord.id.desc()))
+    for record in records:
+        if not isinstance(record.results, list):
+            continue
+        if record.results:
+            results = [row for row in record.results
+                       if isinstance(row, dict) and safe_url(row.get('url'))]
+            if not results:
+                continue
+        else:
+            # A completed zero-match search is [], whereas a comparison always
+            # stores a nonempty measured-similarity object without source URLs.
+            results = []
+        return {'jobId': record.id, 'state': 'complete', 'error': None, 'result': {
+            'id': record.id, 'provider': 'SerpApi Google Lens', 'results': results,
+            'coverage': 'publicly_indexed_web_pages',
+            'notice': 'Saved earlier search. Open each source to confirm the account, '
+                      'post date and permission; these saved results may have changed.'}}
+    return {'jobId': None, 'state': None, 'result': None, 'error': None}
 
 
 def recover_interrupted(db):

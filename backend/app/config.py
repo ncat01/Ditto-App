@@ -26,7 +26,9 @@ class Settings(BaseSettings):
     meta_api_version: str = Field(default="v25.0", pattern=r"^v[0-9]+\.0$")
     serpapi_api_key: SecretStr = SecretStr("")
     search_monthly_unit_limit: int = Field(default=225,ge=0,le=250)
-    search_user_monthly_unit_limit: int = Field(default=10,ge=0,le=250)
+    # Two five-frame exact/visual searches per account; the shared free-plan
+    # reserve remains capped separately so this cannot raise project usage.
+    search_user_monthly_unit_limit: int = Field(default=20,ge=0,le=250)
     google_cloud_api_key: SecretStr = SecretStr("")
     vision_monthly_unit_limit: int = Field(default=900,ge=0,le=900)
     vision_user_monthly_unit_limit: int = Field(default=40,ge=0,le=900)

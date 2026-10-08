@@ -1,5 +1,35 @@
 # Commercial release progress
 
+## Current status — 1.8.9 (2026-10-08)
+
+The signed APK/AAB are built for `com.ditto.app`, version 1.8.9/code 18, Android 8+ and target API 36. The latest Railway deployment succeeded and reports 1.8.9. Live health returns HTTP 200 and a connected database. **The real copied-Reel acceptance test failed. Public commercial launch is not certified; [BLOCKERS.md](BLOCKERS.md) is authoritative.**
+
+- Validation: **129 backend tests and 33 Android unit tests pass**. Signed APK/AAB artifacts and the workstation `releases/Ditto-1.8.9.zip` are prepared.
+- Originals now lead to a prominent **Find copies** action. Selecting a saved original scrolls to its search controls; a successful Instagram import selects the returned original. Saving or importing an original alone does not silently start a provider search.
+- Search consent submits a durable job and presents actual queued/running/completed/failed states. Returning Home does not stop a submitted search; reopening the original restores its receipt and results.
+- The client retains an ambiguous submission's request ID and recovers that exact server receipt. Explicit retry reuses the ID. Confirmed client rejection clears pending state and preserves direct comparison; network failure, HTTP 408 and server failure retain recovery.
+- A malformed or failed receipt is never presented as a completed zero-match search. Successful empty results explain the limit of indexed coverage. Search activity records cover queued/completed/failed/interrupted work.
+- Network validation recovery reconnects the repository, and closed repositories cannot publish stale snapshots after logout. Customer messages hide raw connection details and internal fingerprint labels.
+- Earlier completed web searches saved before durable job receipts restore from the legacy records without another provider query or quota reservation. Live restoration returned 50 source URLs, including two Instagram links and zero exact matches; the known copy was absent. Direct comparison records are not shown as web searches.
+- Railway deployment `72919b8b-f368-4114-85e8-852fe5ece561` succeeded from source `813710c`. The live database connection and restored search endpoint were checked after deployment.
+- Profile verification controls follow the host's truthful email capability. The owner declined sender credentials; recovery/verification email and SMTP remain unavailable. Reviewed outreach opens the user's email app.
+
+### Real Reel acceptance evidence
+
+The original `DeIBHC7NOcX` was imported through the authorized Instagram integration. Its two earlier completed searches each saved 50 source URLs. Neither includes the known suspected-copy Reel `DeLwnWiz9lW`. Restoration preserves those actual results and does not substitute a fabricated match.
+
+**Current real copied-Reel acceptance check: failed.** One fresh normal owner search completed with 50 source URLs, including six Instagram links and zero exact matches. Neither the original `DeIBHC7NOcX` nor the specified copy `DeLwnWiz9lW` was returned. The job completed successfully, but it failed the required known-copy discovery check. No copied-Reel discovery success is claimed. SerpApi searches indexed public pages and cannot promise all public Instagram Reels.
+
+That video search used ten provider query units. The live owner allowance is 20 units/month, with all 20 now used; the global cap remains 225 units/month. Restoring saved results does not consume additional units. Temporary generated UI-verification account/media were removed, and emulator app data was cleared.
+
+Non-role professional Instagram users still require Meta review, Advanced Access and publishing. Trial hosting continuity, email capability, the remaining infrastructure requirements and store approval are not completed by signing the APK.
+
+Deliverables: [APK](apk/DITTO-1.8.9-release.apk), [AAB](apk/DITTO-1.8.9-release.aab), and workstation `releases/Ditto-1.8.9.zip`. No physical phone is connected for current handset acceptance.
+
+## Historical implementation record
+
+The entries below record earlier states and test totals. They are retained for traceability; the current status above and BLOCKERS.md supersede their launch-status statements.
+
 ## P1 ? Repository audit completed (2026-10-06)
 
 Preserve the existing Kotlin Compose Android app and FastAPI/SQLAlchemy backend.

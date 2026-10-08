@@ -38,7 +38,6 @@ import com.ditto.app.viewmodel.DittoViewModel
 @Composable
 fun ActivityScreen(vm: DittoViewModel, onOpenCase: (String) -> Unit) {
     val activity by vm.activity.collectAsStateWithLifecycle()
-    val engines = vm.engineNames
 
     LazyColumn(
         modifier = Modifier
@@ -51,33 +50,23 @@ fun ActivityScreen(vm: DittoViewModel, onOpenCase: (String) -> Unit) {
             Eyebrow("Activity")
             Spacer(Modifier.height(6.dp))
             Text(
-                "Agent activity",
+                "Your history",
                 style = MaterialTheme.typography.displaySmall,
                 color = DittoColors.TextPrimary
             )
             Spacer(Modifier.height(4.dp))
             Text(
-                "Every autonomous decision Ditto has made, in order.",
+                "Your uploads, searches, comparisons and case updates.",
                 style = MaterialTheme.typography.bodyMedium,
                 color = DittoColors.TextSecondary
             )
-        }
-
-        item {
-            DittoCard(background = DittoColors.BackgroundAlt) {
-                Eyebrow("Active engines")
-                Spacer(Modifier.height(8.dp))
-                EngineLine("Matching", engines.matcher)
-                EngineLine("Discovery", engines.discovery)
-                EngineLine("Verification", engines.verification)
-            }
         }
 
         if (activity.isEmpty()) {
             item {
                 EmptyState(
                     title = "Nothing yet.",
-                    body = "Your agent activity will appear here as Ditto scans, verifies and follows up."
+                    body = "Your requested uploads, searches and comparisons will appear here."
                 )
             }
         } else {
@@ -92,25 +81,8 @@ fun ActivityScreen(vm: DittoViewModel, onOpenCase: (String) -> Unit) {
 }
 
 @Composable
-private fun EngineLine(label: String, value: String) {
-    Row(Modifier.padding(vertical = 3.dp)) {
-        Text(
-            label,
-            style = MaterialTheme.typography.bodySmall,
-            color = DittoColors.TextTertiary,
-            modifier = Modifier.width(92.dp)
-        )
-        Text(
-            value,
-            style = MaterialTheme.typography.bodySmall,
-            color = DittoColors.TextSecondary,
-            modifier = Modifier.weight(1f)
-        )
-    }
-}
-
-@Composable
 private fun ActivityRow(event: ActivityEvent, onClick: () -> Unit) {
+    val display=customerActivityText(event)
     DittoCard(
         onClick = if (event.caseId != null) onClick else null,
         contentPadding = 14
@@ -133,19 +105,19 @@ private fun ActivityRow(event: ActivityEvent, onClick: () -> Unit) {
             Spacer(Modifier.width(14.dp))
             Column(Modifier.weight(1f)) {
                 Text(
-                    event.agent.label,
+                    display.category,
                     style = MaterialTheme.typography.labelSmall,
                     color = DittoColors.SecondaryBlue
                 )
                 Spacer(Modifier.height(2.dp))
                 Text(
-                    event.title,
+                    display.title,
                     style = MaterialTheme.typography.titleSmall,
                     color = DittoColors.TextPrimary
                 )
                 Spacer(Modifier.height(2.dp))
                 Text(
-                    event.detail,
+                    display.detail,
                     style = MaterialTheme.typography.bodySmall,
                     color = DittoColors.TextSecondary
                 )

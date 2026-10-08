@@ -93,6 +93,7 @@ def health(db: Session = Depends(get_db)) -> schemas.HealthOut:
         demoMode=settings.demo_mode,
         database=database,
         providers=settings.provider_status(),
+        capabilities={'accountEmail': settings.account_email_configured},
     )
 
 

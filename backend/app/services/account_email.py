@@ -5,7 +5,7 @@ from app.config import get_settings
 
 def require_email():
     settings = get_settings()
-    if not (settings.smtp_host and settings.smtp_port in (465, 587) and settings.smtp_from and settings.public_base_url.startswith('https://')):
+    if not settings.account_email_configured:
         raise HTTPException(503, 'Account email service is unavailable. Contact support.')
     return settings
 

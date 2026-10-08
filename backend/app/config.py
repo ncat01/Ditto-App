@@ -69,6 +69,11 @@ class Settings(BaseSettings):
         return bool(self.cloud_email_outreach_enabled and self.smtp_host and
                     self.smtp_port in (465,587) and self.smtp_from and self.smtp_user and self.smtp_password)
 
+    @property
+    def account_email_configured(self) -> bool:
+        return bool(self.smtp_host and self.smtp_port in (465, 587) and
+                    self.smtp_from and self.public_base_url.startswith('https://'))
+
     def provider_status(self) -> dict[str, str]:
         """Human-readable status for /api/health, so callers know what is real."""
         return {

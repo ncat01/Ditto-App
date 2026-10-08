@@ -8,9 +8,58 @@ import okhttp3.HttpUrl.Companion.toHttpUrlOrNull
 import okhttp3.RequestBody.Companion.toRequestBody
 import org.json.JSONArray
 import org.json.JSONObject
+import java.io.IOException
+import java.net.ConnectException
+import java.net.SocketTimeoutException
+import java.net.UnknownHostException
 import java.util.concurrent.TimeUnit
+import javax.net.ssl.SSLException
 
 data class ServerSession(val userId: String, val token: String, val expiresAt: Long, val endpoint: String)
+
+class BackendRequestException(message: String, cause: Throwable? = null, val status: Int? = null) : IllegalStateException(message, cause)
+
+/** A timeout response can arrive while a submitted operation is still running. */
+internal fun isDefiniteBackendRejection(failure: Throwable): Boolean =
+    (failure as? BackendRequestException)?.status?.let {it in 400..499 && it != 408} == true
+
+/** Network diagnostics belong in logs, never in a customer-facing error. */
+internal fun backendFailureMessage(path: String, failure: Throwable, mutation: Boolean = false): String {
+    if (failure is BackendRequestException) return failure.message ?: "Ditto could not complete this request."
+    val causes = generateSequence(failure) { it.cause }.take(8).toList()
+    val networkFailure = causes.firstOrNull { it is IOException }
+    if (networkFailure != null) {
+        val route = path.substringBefore('?')
+        if (networkFailure is SSLException) {
+            return "Ditto could not establish a secure connection. Try again shortly or contact support."
+        }
+        if (mutation && networkFailure !is UnknownHostException && networkFailure !is ConnectException) {
+            return when {
+                route.endsWith("/web-search-job") -> "Search status could not be confirmed. Reopen your original to check before searching again."
+                route.contains("compare") || route == "api/scan" -> "Comparison status could not be confirmed. Check your activity before submitting again."
+                route.startsWith("api/content") -> "Upload status could not be confirmed. Check your originals before uploading again."
+                route == "api/auth/signup" -> "Account creation could not be confirmed. Try signing in before creating it again."
+                route == "api/auth/refresh" -> "Your session could not reconnect. Check your connection and try again."
+                route == "api/auth/login" -> "Cannot reach Ditto to sign in. Check your connection and try again."
+                else -> "The action could not be confirmed. Check its saved status before trying again."
+            }
+        }
+        return when {
+            route == "api/auth/login" -> "Cannot reach Ditto to sign in. Check your connection and try again."
+            route == "api/auth/signup" -> "Cannot reach Ditto to create your account. Check your connection and try again."
+            route == "api/auth/refresh" -> "Your session could not reconnect. Check your connection and try again."
+            networkFailure is SocketTimeoutException -> "Ditto is taking longer to respond. Check your connection; we will reconnect automatically."
+            route.contains("/media") -> "Cannot download this media yet. Check your connection and try again."
+            else -> "Cannot reach Ditto. Check your internet connection; we will reconnect automatically."
+        }
+    }
+    if (failure is org.json.JSONException) return "Ditto returned an unreadable response. Try again shortly."
+    return failure.message?.takeIf { it.isNotBlank() && it.length <= 240 }
+        ?: "Ditto could not complete this request. Try again."
+}
+
+internal fun canRetryBackendRequest(method: String, failure: IOException): Boolean =
+    method == "GET" && failure !is SSLException && failure !is java.io.FileNotFoundException
 
 internal fun backendErrorMessage(path: String, status: Int, responseBody: String): String {
     if (status in 300..399) {
@@ -112,7 +161,24 @@ class BackendConnection(private val context: Context) {
 
 class BackendApi(val endpoint: String, private val token: String?, private val tokenProvider: (() -> String)? = null) {
     private val client=OkHttpClient.Builder().connectTimeout(15,TimeUnit.SECONDS).readTimeout(120,TimeUnit.SECONDS)
-        .followRedirects(false).followSslRedirects(false).build()
+        .followRedirects(false).followSslRedirects(false)
+        // POSTs can submit uploads, rotate sessions or enqueue a search. Only
+        // explicitly retried GETs may be replayed after a connection failure.
+        .retryOnConnectionFailure(false).build()
+    private fun <T> execute(request: Request, path: String, read: (Response) -> T): T {
+        var attempt=0
+        while(true) {
+            try {
+                return client.newCall(request).execute().use(read)
+            } catch(failure: IOException) {
+                if(attempt==0 && canRetryBackendRequest(request.method,failure)) {
+                    attempt++
+                    continue
+                }
+                throw BackendRequestException(backendFailureMessage(path,failure,request.method!="GET"),failure)
+            }
+        }
+    }
     fun supportsChunkedUpload(): Boolean = JSONObject(request("api/health")).optJSONObject("capabilities")?.optString("uploadProtocol") == "chunked-appwrite-v1"
     suspend fun awaitResult(path: String, json: String?=null, body: RequestBody?=null): String {
         val response=request(path,json,body)
@@ -156,7 +222,7 @@ class BackendApi(val endpoint: String, private val token: String?, private val t
     fun download(path: String, destination: java.io.File): java.io.File {
         if(destination.isFile) return destination
         val request=Request.Builder().url(endpoint+path).apply { if(token!=null) header("Authorization","Bearer ${tokenProvider?.invoke() ?: token}") }.build()
-        client.newCall(request).execute().use { response ->
+        return execute(request,path) { response ->
             require(response.isSuccessful) { "Private media unavailable (${response.code})." }
             val body=response.body ?: error("Media unavailable.")
             require(body.contentLength()<=25*1024*1024) { "Media exceeds the download limit." }
@@ -169,7 +235,7 @@ class BackendApi(val endpoint: String, private val token: String?, private val t
                 } }
                 require(temporary.renameTo(destination)) { "Could not save private media." }
             } finally { temporary.delete() }
-            return destination
+            destination
         }
     }
     fun request(path: String, json: String?=null, body: RequestBody?=null): String {
@@ -177,12 +243,12 @@ class BackendApi(val endpoint: String, private val token: String?, private val t
             if(token!=null) header("Authorization","Bearer ${tokenProvider?.invoke() ?: token}")
             if(body!=null) post(body) else if(json!=null) post(json.toRequestBody("application/json".toMediaType()))
         }.build()
-        client.newCall(request).execute().use { response ->
+        return execute(request,path) { response ->
             val text=response.body?.string() ?: ""
             if(!response.isSuccessful) {
-                error(backendErrorMessage(path, response.code, text))
+                throw BackendRequestException(backendErrorMessage(path, response.code, text),status=response.code)
             }
-            return text
+            text
         }
     }
 }

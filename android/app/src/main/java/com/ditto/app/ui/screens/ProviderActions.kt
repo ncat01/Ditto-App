@@ -8,9 +8,11 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import com.ditto.app.core.BackendConnection
 import com.ditto.app.core.BackendApi
+import com.ditto.app.core.isDefiniteBackendRejection
 import com.ditto.app.core.ServiceLocator
 import com.ditto.app.data.repository.RemoteDittoRepository
 import com.ditto.app.ui.components.SecondaryButton
+import com.ditto.app.ui.components.PrimaryButton
 import com.ditto.app.ui.components.DittoCard
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -200,7 +202,7 @@ fun InstagramConnectionCard() {
 }
 
 @Composable
-fun InstagramImportCard(onImported: () -> Unit) {
+fun InstagramImportCard(onImported: (String) -> Unit) {
     val context=LocalContext.current
     val scope=rememberCoroutineScope()
     var busy by remember { mutableStateOf(false) }
@@ -215,13 +217,14 @@ fun InstagramImportCard(onImported: () -> Unit) {
                     (0 until rows.length()).map { rows.getJSONObject(it) }
                 }
                 if(posts.isEmpty()) message="No posts in your linked Instagram account yet."
-            } catch(e:Exception) { message=e.message ?: "Instagram unavailable." }
+            } catch(e:CancellationException) { throw e }
+            catch(e:Exception) { message=safeCustomerMessage(e.message,"Instagram posts couldn't be loaded. Try again.") }
             finally { busy=false }
         }
     }
     DittoCard {
         Text("Your Instagram originals",style=MaterialTheme.typography.titleMedium)
-        Text("Import a video or Reel from your linked Creator account (up to 20 MB).",style=MaterialTheme.typography.bodySmall)
+        Text("Import your own video or Reel (up to 20 MB), then tap Find copies to start a search.",style=MaterialTheme.typography.bodySmall)
         Spacer(Modifier.height(8.dp))
         SecondaryButton(text=if(busy) "Working…" else "Load Instagram posts",onClick={load()},enabled=!busy,modifier=Modifier.fillMaxWidth())
         message?.let { Text(it,style=MaterialTheme.typography.bodySmall) }
@@ -233,11 +236,15 @@ fun InstagramImportCard(onImported: () -> Unit) {
                     busy=true;message=null
                     scope.launch {
                         try {
-                            withContext(Dispatchers.IO) { connectedApi(context).awaitResult("api/integrations/instagram/import/${post.getString("id")}","{}") }
-                            message="Video imported. It is now in your library."
-                            withContext(Dispatchers.IO) { (ServiceLocator.repository(context) as? RemoteDittoRepository)?.refresh() }
-                            onImported()
-                        } catch(e:Exception) { message=e.message ?: "Import failed." }
+                            val importedId=withContext(Dispatchers.IO) {
+                                val result=JSONObject(connectedApi(context).awaitResult("api/integrations/instagram/import/${post.getString("id")}","{}"))
+                                (ServiceLocator.repository(context) as? RemoteDittoRepository)?.refresh()
+                                result.getString("id")
+                            }
+                            message="Original saved. Tap Find copies to start its search."
+                            onImported(importedId)
+                        } catch(e:CancellationException) { throw e }
+                        catch(e:Exception) { message=safeCustomerMessage(e.message,"Import couldn't finish. Check your originals before trying again.") }
                         finally {busy=false}
                     }
                 },modifier=Modifier.fillMaxWidth())
@@ -279,28 +286,36 @@ fun AccountSecurityCard() {
     val scope=rememberCoroutineScope()
     var busy by remember {mutableStateOf(false)}
     var verified by remember {mutableStateOf(false)}
+    var emailAvailable by remember {mutableStateOf<Boolean?>(null)}
     var message by remember {mutableStateOf<String?>(null)}
     fun check() {
         scope.launch {
-            try {verified=withContext(Dispatchers.IO) {JSONObject(connectedApi(context).request("api/auth/me")).optBoolean("emailVerified")}}
+            try {
+                val states=withContext(Dispatchers.IO) {
+                    val api=connectedApi(context)
+                    val capabilities=JSONObject(api.request("api/health")).optJSONObject("capabilities")
+                    (capabilities?.optBoolean("accountEmail")==true) to JSONObject(api.request("api/auth/me")).optBoolean("emailVerified")
+                }
+                emailAvailable=states.first;verified=states.second
+            }
             catch(e:CancellationException) {throw e}
-            catch(e:Exception) {message=e.message}
+            catch(e:Exception) {message=safeCustomerMessage(e.message,"Couldn't check account security. Try again later.")}
         }
     }
     LaunchedEffect(Unit) {check()}
     DittoCard {
         Text("Account security",style=MaterialTheme.typography.titleMedium)
-        Text(if(verified) "Email verified" else "Verify your email to confirm this account belongs to you.",style=MaterialTheme.typography.bodySmall)
-        if(!verified) SecondaryButton(text="Send verification email",enabled=!busy,onClick={
+        Text(when {verified -> "Email verified"; emailAvailable==true -> "Verify your email to confirm this account belongs to you."; emailAvailable==false -> "Email verification is currently unavailable. Keep your account password safe."; else -> "Checking account security…"},style=MaterialTheme.typography.bodySmall)
+        if(!verified && emailAvailable==true) SecondaryButton(text="Send verification email",enabled=!busy,onClick={
             busy=true
             scope.launch {
                 try {withContext(Dispatchers.IO) {connectedApi(context).request("api/auth/request-verification","{}")};message="Open the verification link in your email, then refresh here."}
                 catch(e:CancellationException) {throw e}
-                catch(e:Exception) {message=e.message ?: "Email unavailable."}
+                catch(e:Exception) {message=safeCustomerMessage(e.message,"Verification email couldn't be sent. Try again later.")}
                 finally {busy=false}
             }
         },modifier=Modifier.fillMaxWidth())
-        TextButton(enabled=!busy,onClick={check()}) {Text("Refresh verification")}
+        if(emailAvailable==true) TextButton(enabled=!busy,onClick={check()}) {Text("Check verification")}
         val endpoint=BackendConnection(context).endpoint()
         Row {
             TextButton(onClick={context.startActivity(Intent(Intent.ACTION_VIEW,Uri.parse(endpoint+"privacy")))}) {Text("Privacy")}
@@ -317,84 +332,117 @@ fun ContentDiscoveryCard(contentId: String, onOpenCase: (String) -> Unit) {
     val context=LocalContext.current
     val scope=rememberCoroutineScope()
     val lifecycleOwner=LocalLifecycleOwner.current
+    val userId=BackendConnection(context).session()?.userId.orEmpty()
+    val pendingReceipts=remember {context.getSharedPreferences("search_receipts",0)}
+    val pendingKey="$userId:$contentId"
+    var pendingRequestId by remember(pendingKey) {
+        mutableStateOf(pendingReceipts.getString(pendingKey,null)?.takeIf {it.matches(Regex("[a-zA-Z0-9]{1,36}"))})
+    }
     var busy by remember(contentId) {mutableStateOf(false)}
     var message by remember(contentId) {mutableStateOf<String?>(null)}
-    var results by remember(contentId) {mutableStateOf<List<JSONObject>>(emptyList())}
+    var results by remember(contentId) {mutableStateOf<List<SearchLead>>(emptyList())}
     var confirmSearch by remember(contentId) {mutableStateOf(false)}
-    var configured by remember(contentId) {mutableStateOf(false)}
+    var configured by remember(contentId) {mutableStateOf<Boolean?>(null)}
     var currentStep by remember(contentId) {mutableStateOf<String?>(null)}
     var completedCaseId by remember(contentId) {mutableStateOf<String?>(null)}
     var searchJobId by remember(contentId) {mutableStateOf<String?>(null)}
     var restoringSearch by remember(contentId) {mutableStateOf(true)}
-    fun showSearchResult(result: JSONObject) {
-        val rows=result.optJSONArray("results") ?: JSONArray()
-        results=(0 until rows.length()).map {rows.getJSONObject(it)}
-        currentStep="Search complete"
-        message=if(results.isEmpty()) "No publicly indexed match was found. You can still compare a suspected copy directly."
-            else result.optString("notice").ifBlank {"Open each source to review the account, post date and permission."}
-        busy=false
+    var statusUncertain by remember(contentId) {mutableStateOf(false)}
+
+    fun clearPendingRequest() {
+        pendingReceipts.edit().remove(pendingKey).commit()
+        pendingRequestId=null
     }
-    fun acceptSearchStatus(receipt: JSONObject): Boolean {
-        when(receipt.optString("state")) {
+    fun acceptSearchStatus(receipt: SearchReceipt) {
+        val expected=pendingRequestId?.let {searchReceiptId(userId,contentId,it)}
+        require(expected==null || receipt.id==expected) {"The current search could not be confirmed."}
+        if(receipt.id!=null) {
+            clearPendingRequest()
+        }
+        statusUncertain=false
+        searchJobId=receipt.id.takeIf {receipt.active}
+        busy=receipt.active
+        when(receipt.state) {
             "complete" -> {
-                val result=receipt.optJSONObject("result")
-                if(result!=null) showSearchResult(result)
-                else {busy=false;currentStep="Search stopped";message="The saved search result is unavailable. Try again."}
-                searchJobId=null
-                return true
+                results=receipt.leads
+                currentStep=if(results.isEmpty()) "Search complete · No indexed matches"
+                    else "Search complete · ${results.size} possible sources"
+                message=if(results.isEmpty())
+                    "No match was found in publicly indexed results. This does not rule out a repost on Instagram. You can still compare a suspected repost directly."
+                else receipt.notice.ifBlank {"Open each source to confirm the account, post date and permission."}
             }
             "error", "unknown", "cancelled" -> {
-                busy=false;currentStep="Search stopped"
-                message=receipt.optString("error").takeIf {it.isNotBlank() && it!="null"}
-                    ?: "This search could not finish. No message was sent."
-                searchJobId=null
-                return true
+                results=emptyList()
+                currentStep="Search could not finish"
+                message=safeCustomerMessage(receipt.error,"The search stopped before results were available. This does not mean no copies exist.")
             }
-            else -> {
-                currentStep=if(receipt.optString("state")=="queued") "Search queued" else "Searching for exact and visually similar matches"
+            "queued", "running" -> {
+                results=emptyList()
+                currentStep=if(receipt.state=="queued") "Search queued" else "Searching for exact and visually similar matches"
                 message=null
-                busy=true
-                return false
             }
+            else -> { currentStep=null;message=null }
         }
     }
-    LaunchedEffect(contentId) {
-        try {configured=withContext(Dispatchers.IO) {JSONObject(connectedApi(context).request("api/discovery/status")).optBoolean("configured")}}
-        catch(e:CancellationException) {throw e}
-        catch(e:Exception) {message=e.message}
+    suspend fun restoreSearch() {
+        restoringSearch=true
         try {
-            val receipt=withContext(Dispatchers.IO) {JSONObject(connectedApi(context).request("api/discovery/$contentId/web-search-job"))}
-            val existingId=receipt.optString("jobId").takeIf {it.isNotBlank() && it!="null"}
-            if(existingId!=null && !acceptSearchStatus(receipt)) searchJobId=existingId
+            val expected=pendingRequestId?.let {searchReceiptId(userId,contentId,it)}
+            val path=if(expected!=null) "api/jobs/$expected" else "api/discovery/$contentId/web-search-job"
+            val receipt=withContext(Dispatchers.IO) {readSearchReceipt(connectedApi(context).request(path))}
+            acceptSearchStatus(receipt)
         } catch(e:CancellationException) {throw e}
-        catch(e:Exception) {message="Could not restore a previous search. Check your connection before searching again."}
-        finally {restoringSearch=false}
+        catch(e:Exception) {
+            statusUncertain=true
+            busy=false
+            searchJobId=null
+            results=emptyList()
+            currentStep="Search status not confirmed"
+            message=if(pendingRequestId!=null)
+                "Couldn't confirm whether this search started. Check its saved status or retry the same request; retrying will not start a duplicate search."
+            else "Couldn't load saved search results. Check your connection and check the search status before starting another search."
+        } finally {restoringSearch=false}
+    }
+    LaunchedEffect(contentId) {
+        try {
+            configured=withContext(Dispatchers.IO) {JSONObject(connectedApi(context).request("api/discovery/status")).optBoolean("configured")}
+        } catch(e:CancellationException) {throw e}
+        catch(e:Exception) {configured=null}
+        restoreSearch()
     }
     LaunchedEffect(contentId,searchJobId,lifecycleOwner) {
         val jobId=searchJobId ?: return@LaunchedEffect
         lifecycleOwner.lifecycle.repeatOnLifecycle(Lifecycle.State.STARTED) {
             while(isActive) {
                 try {
-                    val receipt=withContext(Dispatchers.IO) {JSONObject(connectedApi(context).request("api/jobs/$jobId"))}
-                    if(acceptSearchStatus(receipt)) return@repeatOnLifecycle
+                    val receipt=withContext(Dispatchers.IO) {readSearchReceipt(connectedApi(context).request("api/jobs/$jobId"))}
+                    require(receipt.id==jobId) {"Unexpected search status."}
+                    acceptSearchStatus(receipt)
+                    if(!receipt.active) {
+                        try {withContext(Dispatchers.IO) {(ServiceLocator.repository(context) as? RemoteDittoRepository)?.refresh()}}
+                        catch(e:CancellationException) {throw e}
+                        catch(e:Exception) { /* Saved search results remain available even if the dashboard refresh fails. */ }
+                        return@repeatOnLifecycle
+                    }
                 } catch(e:CancellationException) {throw e}
-                catch(e:Exception) {message="Your search is saved. Connection unavailable; checking again automatically."}
+                catch(e:Exception) {message="Your search is saved. Results couldn't be checked yet; checking again automatically."}
                 delay(1500)
             }
         }
     }
+
     val picker=rememberLauncherForActivityResult(ActivityResultContracts.PickVisualMedia()) { uri ->
         if(uri!=null) {
-            busy=true;message=null;completedCaseId=null;currentStep="Uploading the suspected copy"
+            busy=true;message=null;results=emptyList();completedCaseId=null;currentStep="Uploading the suspected copy"
             scope.launch {
                 try {
                     val result=withContext(Dispatchers.IO) {
                         val data=context.contentResolver.openInputStream(uri)?.use { input ->
                             val output=java.io.ByteArrayOutputStream()
                             val buffer=ByteArray(8192)
-                            while(true) {val size=input.read(buffer);if(size<0)break;require(output.size()+size<=20_000_000) {"Candidate exceeds 20 MB."};output.write(buffer,0,size)}
+                            while(true) {val size=input.read(buffer);if(size<0)break;require(output.size()+size<=20_000_000) {"The suspected copy exceeds 20 MB."};output.write(buffer,0,size)}
                             output.toByteArray()
-                        } ?: error("Cannot read candidate.")
+                        } ?: error("Couldn't read the selected file.")
                         val mime=context.contentResolver.getType(uri) ?: "application/octet-stream"
                         val body=MultipartBody.Builder().setType(MultipartBody.FORM)
                             .addFormDataPart("file","candidate",data.toRequestBody(mime.toMediaType())).build()
@@ -402,73 +450,115 @@ fun ContentDiscoveryCard(contentId: String, onOpenCase: (String) -> Unit) {
                         JSONObject(if(api.supportsChunkedUpload()) api.uploadMedia(data,mime,"Submitted comparison","Submitted evidence",contentId)
                             else api.awaitResult("api/discovery/$contentId/compare-job",body=body))
                     }
-                    (ServiceLocator.repository(context) as? RemoteDittoRepository)?.refresh()
-                    completedCaseId=result.optString("caseId").takeIf {it.isNotBlank()}
+                    completedCaseId=result.getString("caseId").takeIf {it.isNotBlank()}
                     currentStep="Comparison complete"
                     message="Similarity: ${(result.getDouble("similarity")*100).toInt()}%. Review the source, publication date and permission before taking action."
+                    try {withContext(Dispatchers.IO) {(ServiceLocator.repository(context) as? RemoteDittoRepository)?.refresh()}}
+                    catch(e:CancellationException) {throw e}
+                    catch(e:Exception) { /* The completed comparison can still be opened. */ }
                 } catch(e:CancellationException) {throw e}
-                catch(e:Exception) {currentStep="Comparison stopped";message=e.message ?: "Comparison unavailable."}
+                catch(e:Exception) {currentStep="Comparison could not finish";message=safeCustomerMessage(e.message,"Comparison couldn't finish. Check your activity before submitting again.")}
                 finally {busy=false}
             }
         }
     }
+
     DittoCard {
-        Text("Find and compare reposts",style=MaterialTheme.typography.titleMedium)
-        Text("Start with a web search for copies. If you already have a suspected repost, select that file for a direct comparison.",style=MaterialTheme.typography.bodySmall)
+        Text("Find copies",style=MaterialTheme.typography.titleMedium)
+        Text("Search for posts containing your image or frames from your video. Results come from indexed public pages and may miss Instagram Reels.",style=MaterialTheme.typography.bodySmall)
+        Spacer(Modifier.height(10.dp))
+        PrimaryButton(
+            text=when {restoringSearch -> "Checking saved search…"; busy && searchJobId!=null -> "Search in progress"; busy -> "Please wait…"; statusUncertain -> "Check search status"; results.isNotEmpty() || currentStep?.startsWith("Search complete")==true -> "Search again"; else -> "Find copies"},
+            enabled=!busy && !restoringSearch && (statusUncertain || configured==true),
+            modifier=Modifier.fillMaxWidth(),
+            onClick={
+                if(statusUncertain) scope.launch {
+                    if(configured==null) {
+                        try {configured=withContext(Dispatchers.IO) {JSONObject(connectedApi(context).request("api/discovery/status")).optBoolean("configured")}}
+                        catch(e:CancellationException) {throw e}
+                        catch(e:Exception) { /* The saved receipt can still be checked. */ }
+                    }
+                    restoreSearch()
+                } else confirmSearch=true
+            }
+        )
+        if(statusUncertain && pendingRequestId!=null)
+            TextButton(enabled=!busy && !restoringSearch,onClick={confirmSearch=true}) {Text("Retry the same search request")}
         if(busy) {
+            Spacer(Modifier.height(10.dp))
             LinearProgressIndicator(modifier=Modifier.fillMaxWidth())
-            currentStep?.let {Text(it,style=MaterialTheme.typography.bodySmall)}
-            if(searchJobId!=null) Text("You can return Home; your search will continue.",style=MaterialTheme.typography.bodySmall)
-        } else currentStep?.let {Text(it,style=MaterialTheme.typography.labelMedium)}
-        SecondaryButton(text="Compare a suspected repost",enabled=!busy && !restoringSearch,modifier=Modifier.fillMaxWidth(),onClick={picker.launch(PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageAndVideo))})
-        SecondaryButton(text=if(searchJobId!=null) "Search in progress" else if(restoringSearch) "Checking previous search..." else "Search for matching posts",enabled=!busy && !restoringSearch && configured,modifier=Modifier.fillMaxWidth(),onClick={confirmSearch=true})
-        if(!configured) Text("Web search is currently unavailable. Candidate comparison is available for your uploaded originals.",style=MaterialTheme.typography.bodySmall)
+        }
+        currentStep?.let {Text(it,style=MaterialTheme.typography.labelMedium)}
+        if(searchJobId!=null) Text("You can go Home. This search continues, and its results will be here when you return.",style=MaterialTheme.typography.bodySmall)
+        if(!restoringSearch && configured==false) Text("Web search is currently unavailable. You can compare a suspected repost below.",style=MaterialTheme.typography.bodySmall)
+        if(!restoringSearch && configured==null && !statusUncertain) TextButton(onClick={scope.launch {
+            restoringSearch=true
+            try {configured=withContext(Dispatchers.IO) {JSONObject(connectedApi(context).request("api/discovery/status")).optBoolean("configured")}}
+            catch(e:CancellationException) {throw e}
+            catch(e:Exception) {message="Couldn't check search availability. Check your connection and try again."}
+            finally {restoringSearch=false}
+        }}) {Text("Check search availability")}
         message?.let {Text(it,style=MaterialTheme.typography.bodySmall)}
+        results.forEach { result ->
+            Spacer(Modifier.height(12.dp))
+            HorizontalDivider()
+            Spacer(Modifier.height(8.dp))
+            Text(if(result.exact) "Exact image match" else "Possible visual match",style=MaterialTheme.typography.labelMedium)
+            Text(result.title.ifBlank {"Possible matching post"},style=MaterialTheme.typography.titleSmall)
+            result.source.takeIf {it.isNotBlank()}?.let {Text(it,style=MaterialTheme.typography.bodySmall)}
+            Text(result.url,style=MaterialTheme.typography.bodySmall,maxLines=2)
+            TextButton(onClick={
+                try {context.startActivity(Intent(Intent.ACTION_VIEW,Uri.parse(result.url)))}
+                catch(e:android.content.ActivityNotFoundException) {message="No browser is available to open this source."}
+            }) {Text("Review source")}
+        }
+        Spacer(Modifier.height(14.dp))
+        HorizontalDivider()
+        Spacer(Modifier.height(10.dp))
+        Text("Already found a suspected repost?",style=MaterialTheme.typography.titleSmall)
+        Text("Compare its image or video file with your original. This checks the two files; it does not run a web search.",style=MaterialTheme.typography.bodySmall)
+        Spacer(Modifier.height(8.dp))
+        SecondaryButton(text="Compare a suspected repost",enabled=!busy && !restoringSearch && !statusUncertain,modifier=Modifier.fillMaxWidth(),onClick={picker.launch(PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageAndVideo))})
         completedCaseId?.let { caseId ->
+            Spacer(Modifier.height(8.dp))
             SecondaryButton(text="Review comparison",enabled=!busy,modifier=Modifier.fillMaxWidth(),onClick={onOpenCase(caseId)})
         }
-        results.forEach { result ->
-            val exact=result.optString("matchType")=="exact"
-            Text(if(exact) "Exact match" else "Possible visual match",style=MaterialTheme.typography.labelMedium)
-            Text(result.optString("title").ifBlank {"Possible matching post"},style=MaterialTheme.typography.titleSmall)
-            result.optString("source").takeIf {it.isNotBlank()}?.let {Text(it,style=MaterialTheme.typography.bodySmall)}
-            Text(result.getString("url"),style=MaterialTheme.typography.bodySmall,maxLines=2)
-            TextButton(onClick={
-                val uri=Uri.parse(result.getString("url"))
-                if(uri.scheme in listOf("https","http") && uri.host!=null && uri.userInfo==null)
-                    context.startActivity(Intent(Intent.ACTION_VIEW,uri))
-            }) {Text("Review source in browser")}
-        }
     }
-    if(confirmSearch) AlertDialog(onDismissRequest={confirmSearch=false},title={Text("Search with Google Lens?")},
-        text={Text("Ditto sends this image, or five sampled video frames, to SerpApi for Google Lens search. Results are unverified leads and may miss reposts. Nothing is sent to the source account.")},
+    if(confirmSearch) AlertDialog(onDismissRequest={confirmSearch=false},title={Text("Find copies of this original?")},
+        text={Text("Ditto shares this image, or five sampled video frames, with SerpApi and Google Lens. The search checks exact and similar matches on indexed public pages. Some reposts will not be indexed. Results are leads for you to review; source accounts are not contacted.")},
         dismissButton={TextButton(onClick={confirmSearch=false}) {Text("Cancel")}},
         confirmButton={TextButton(onClick={
-            confirmSearch=false;busy=true;message=null;results=emptyList();completedCaseId=null
-            currentStep="Checking exact matches and similar frames"
+            confirmSearch=false;busy=true;message=null;results=emptyList();completedCaseId=null;statusUncertain=false
+            val requestId=pendingRequestId ?: java.util.UUID.randomUUID().toString().replace("-","")
+            pendingReceipts.edit().putString(pendingKey,requestId).commit()
+            pendingRequestId=requestId
+            currentStep="Starting your search"
             scope.launch {
                 try {
-                    val requestId=java.util.UUID.randomUUID().toString().replace("-","")
                     val receipt=withContext(Dispatchers.IO) {
-                        JSONObject(connectedApi(context).request("api/discovery/$contentId/web-search-job",JSONObject()
+                        readSearchReceipt(connectedApi(context).request("api/discovery/$contentId/web-search-job",JSONObject()
                             .put("consent_to_search_provider",true).put("request_id",requestId).toString()))
                     }
-                    val jobId=receipt.getString("jobId")
-                    require(jobId.matches(Regex("[a-zA-Z0-9._-]{1,36}"))) {"Invalid search receipt."}
-                    if(!acceptSearchStatus(receipt)) searchJobId=jobId
+                    acceptSearchStatus(receipt)
                 } catch(e:CancellationException) {throw e}
                 catch(e:Exception) {
-                    // A lost response can still mean the server accepted the search.
-                    // Check its saved receipt without submitting or charging again.
-                    try {
-                        val saved=withContext(Dispatchers.IO) {JSONObject(connectedApi(context).request("api/discovery/$contentId/web-search-job"))}
-                        val jobId=saved.optString("jobId").takeIf {it.isNotBlank() && it!="null"}
-                        if(jobId!=null) {if(!acceptSearchStatus(saved)) searchJobId=jobId}
-                        else {currentStep="Search stopped";message=e.message ?: "Search unavailable."}
-                    } catch(cancelled:CancellationException) {throw cancelled}
-                    catch(statusError:Exception) {currentStep="Search status unavailable";message="Could not confirm whether the search started. Reopen this original to check its saved status before trying again."}
+                    if(isDefiniteBackendRejection(e)) {
+                        // The server rejected the request before accepting a job. Comparison
+                        // remains usable, including when only the search allowance is exhausted.
+                        clearPendingRequest()
+                        statusUncertain=false
+                        searchJobId=null
+                        currentStep="Search could not start"
+                        message=safeCustomerMessage(e.message,"This search was not started. Please try again later.")
+                    } else {
+                        // Recover this exact request. A prior completed search is not evidence
+                        // that the new request ran, and retrying the same receipt is idempotent.
+                        val failureMessage=safeCustomerMessage(e.message,"Couldn't confirm whether the search started.")
+                        restoreSearch()
+                        if(statusUncertain) message="$failureMessage Check its saved status or retry the same request."
+                    }
                 }
                 finally {if(searchJobId==null) busy=false}
             }
-        }) {Text("Search")}})
+        }) {Text(if(pendingRequestId!=null) "Retry this search" else "Start search")}})
 }

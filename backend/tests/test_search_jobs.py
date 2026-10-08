@@ -74,6 +74,12 @@ def test_job_is_idempotent_owned_and_restorable(configured):
         assert completed['result']['results'][0]['matchType'] == 'exact'
         assert client.post(endpoint, headers=owner, json=body).json()['result'] == completed['result']
         assert not process_search_next()
+        events = client.get('/api/activity', headers=owner).json()
+        search_titles = [row['title'] for row in events if row['agent'] == 'discovery']
+        assert search_titles.count('Search requested') == 1
+        assert search_titles.count('Search started') == 1
+        assert search_titles.count('Search complete') == 1
+        assert not any(row['agent'] == 'discovery' for row in client.get('/api/activity', headers=other).json())
 
 
 def test_running_receipt_observable_and_empty_search_completes(configured, monkeypatch):
@@ -97,6 +103,9 @@ def test_running_receipt_observable_and_empty_search_completes(configured, monke
         completed = client.get(endpoint, headers=owner).json()
         assert completed['state'] == 'complete'
         assert completed['result']['results'] == []
+        event = next(row for row in client.get('/api/activity', headers=owner).json()
+                     if row['title'] == 'Search complete')
+        assert 'does not prove that no repost exists' in event['detail']
 
 
 def test_provider_failure_is_not_automatically_replayed(configured, monkeypatch):
@@ -119,6 +128,9 @@ def test_provider_failure_is_not_automatically_replayed(configured, monkeypatch)
         assert status['state'] == 'error'
         assert status['result'] is None
         assert len(calls) == 1
+        events = client.get('/api/activity', headers=owner).json()
+        assert any(row['title'] == 'Search could not finish' for row in events)
+        assert not any(row['title'] == 'Search complete' for row in events)
 
 
 @pytest.mark.parametrize('receipt_age', ['fresh', 'stale', 'legacy'])

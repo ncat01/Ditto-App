@@ -220,10 +220,10 @@ fun CasesScreen(vm: DittoViewModel, onOpenCase: (String) -> Unit) {
         if (visible.isEmpty()) {
             item {
                 EmptyState(
-                    title = if (cases.isEmpty()) "You're all clear."
+                    title = if (cases.isEmpty()) "No cases to display"
                     else "Nothing matches that view.",
                     body = if (cases.isEmpty())
-                        "No active content-credit cases right now. Run a scan to start monitoring."
+                        "Compare an original with a suspected repost to create a case. Web search results appear under your selected original."
                     else "Try a different filter or clear your search."
                 )
             }

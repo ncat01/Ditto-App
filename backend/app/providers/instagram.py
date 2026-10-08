@@ -30,7 +30,7 @@ class InstagramReader:
 
     def _get(self, path, params):
         if not self._token:
-            raise InstagramUnavailable('META_ACCESS_TOKEN is not configured.')
+            raise InstagramUnavailable('Connect your Instagram account in Ditto first.')
         try:
             with httpx.Client(timeout=30, follow_redirects=False) as client:
                 response = client.get(self._base + path, params=params,
@@ -41,13 +41,13 @@ class InstagramReader:
                 try: code = response.json().get('error', {}).get('code')
                 except (ValueError, AttributeError): pass
                 if code == 190:
-                    message = 'Instagram token invalid or expired. Generate a new token and update the Codespaces secret.'
+                    message = 'Your Instagram connection expired. Reconnect Instagram in Ditto.'
                 elif response.status_code == 429 or code in (4, 17, 32, 613):
                     message = 'Instagram rate limit reached. Try later.'
                 elif response.status_code in (400, 401, 403):
-                    message = 'Instagram request denied. Check token, Instagram tester invitation and instagram_business_basic permission.'
+                    message = 'Instagram did not allow access to this account. Reconnect and approve the requested access. If it continues, contact Ditto support.'
                 else:
-                    message = 'Instagram service or API version unavailable. Try later or check META_API_VERSION.'
+                    message = 'Instagram is temporarily unavailable. Please try again later.'
                 raise InstagramUnavailable(message)
             return response.json()
         except (httpx.HTTPError, ValueError):

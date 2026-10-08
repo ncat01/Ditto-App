@@ -99,7 +99,7 @@ fun AccountGate() {
                 OutlinedTextField(password,{password=it},label={Text("Password")},singleLine=true,shape=RoundedCornerShape(16.dp),visualTransformation=PasswordVisualTransformation(),modifier=Modifier.fillMaxWidth())
                 error?.let { Text(it,color=MaterialTheme.colorScheme.error,modifier=Modifier.padding(top=12.dp)) }
                 Spacer(Modifier.height(18.dp))
-                PrimaryButton(if(busy) "Please wait…" else if(signup) "Sign up" else "Log in",enabled=!busy,onClick={ scope.launch { busy=true; error=null; val result=withContext(Dispatchers.IO) { runCatching { connection.configure(true,endpoint); "server:${connection.authenticate(email,password,signup)}" } }; result.onSuccess { user=it; password="" }.onFailure { error=it.message }; busy=false } },modifier=Modifier.fillMaxWidth())
+                PrimaryButton(if(busy) "Please wait…" else if(signup) "Sign up" else "Log in",enabled=!busy,onClick={ scope.launch { busy=true; error=null; val result=withContext(Dispatchers.IO) { runCatching { connection.configure(true,endpoint); "server:${connection.authenticate(email,password,signup)}" } }; result.onSuccess { user=it; password="" }.onFailure { error=safeCustomerMessage(it.message,"Couldn't sign in. Please try again.") }; busy=false } },modifier=Modifier.fillMaxWidth())
                 TextButton(onClick={signup=!signup;error=null},modifier=Modifier.align(Alignment.CenterHorizontally)) { Text(if(signup) "Already have an account? Log in" else "Create an account") }
             }
             if(connected) TextButton(enabled=!busy && email.isNotBlank(),modifier=Modifier.align(Alignment.CenterHorizontally), onClick={
@@ -112,7 +112,7 @@ fun AccountGate() {
                         }
                         error=org.json.JSONObject(response).getString("message")
                     } catch(e:kotlinx.coroutines.CancellationException) { throw e }
-                    catch(e:Exception) { error=e.message ?: "Could not request recovery email." }
+                    catch(e:Exception) { error=safeCustomerMessage(e.message,"Couldn't request a recovery email. Please try again later.") }
                     finally {busy=false}
                 }
             }) {Text("Forgot password?")}
@@ -136,7 +136,7 @@ fun AccountGate() {
                 withContext(Dispatchers.IO) {
                     val repository=ServiceLocator.repository(context)
                     if(repository is com.ditto.app.data.repository.RemoteDittoRepository) {
-                        runCatching { repository.refresh() }.onFailure { repository.connectionError.value="Service unavailable. Check your connection and try refreshing." }
+                        runCatching { repository.refresh() }.onFailure { repository.connectionError.value="Ditto couldn't update this page. We'll try again automatically." }
                     }
                 }
                 ready=true
@@ -148,7 +148,11 @@ fun AccountGate() {
                 if(connected && ready) {
                     val remote=ServiceLocator.repository(context) as com.ditto.app.data.repository.RemoteDittoRepository
                     val serverError by remote.connectionError.collectAsState()
-                    serverError?.let { Text(it,color=DittoColors.Danger,modifier=Modifier.padding(horizontal=16.dp),style=MaterialTheme.typography.bodySmall) }
+                    serverError?.let {
+                        DittoCard(modifier=Modifier.padding(horizontal=16.dp,vertical=6.dp),background=DittoColors.BlueTint,contentPadding=12) {
+                            Text(customerServiceStatus(it),color=DittoColors.TextSecondary,style=MaterialTheme.typography.bodySmall)
+                        }
+                    }
                 }
                 clockMessage?.let { Text(it,modifier=Modifier.padding(horizontal=16.dp),style=MaterialTheme.typography.bodySmall) }
                 Box(Modifier.weight(1f)) { if(ready) CompositionLocalProvider(androidx.lifecycle.viewmodel.compose.LocalViewModelStoreOwner provides owner,

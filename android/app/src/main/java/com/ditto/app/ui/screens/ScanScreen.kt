@@ -1,71 +1,37 @@
-package com.ditto.app.ui.screens
+﻿package com.ditto.app.ui.screens
 
 import android.net.Uri
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.PickVisualMediaRequest
 import androidx.activity.result.contract.ActivityResultContracts
-import androidx.compose.animation.AnimatedVisibility
-import androidx.compose.animation.core.RepeatMode
-import androidx.compose.animation.core.animateFloat
-import androidx.compose.animation.core.infiniteRepeatable
-import androidx.compose.animation.core.rememberInfiniteTransition
-import androidx.compose.animation.core.tween
-import androidx.compose.animation.fadeIn
-import androidx.compose.animation.expandVertically
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
-import androidx.compose.foundation.layout.Arrangement
-import androidx.compose.foundation.layout.Box
-import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.PaddingValues
-import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.Spacer
-import androidx.compose.foundation.layout.fillMaxSize
-import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.height
-import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
-import androidx.compose.runtime.Composable
-import androidx.compose.runtime.getValue
-import androidx.compose.runtime.setValue
+import androidx.compose.material3.TextButton
+import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
+import com.ditto.app.core.BackendConnection
 import com.ditto.app.domain.model.ContentItem
-import com.ditto.app.domain.model.ScanStage
-import com.ditto.app.ui.components.CaseCard
-import com.ditto.app.ui.components.DittoCard
-import com.ditto.app.ui.components.EvidenceVisual
-import com.ditto.app.ui.components.Eyebrow
-import com.ditto.app.ui.components.HairlineDivider
-import com.ditto.app.ui.components.PrimaryButton
-import com.ditto.app.ui.components.SecondaryButton
-import com.ditto.app.ui.components.SectionHeading
-import com.ditto.app.ui.components.relativeTime
+import com.ditto.app.ui.components.*
 import com.ditto.app.ui.theme.DittoColors
 import com.ditto.app.viewmodel.DittoViewModel
 import com.ditto.app.viewmodel.ScanViewModel
-
-private val SCAN_STAGES = listOf(
-    ScanStage.INGESTING,
-    ScanStage.FINGERPRINTING,
-    ScanStage.DISCOVERING,
-    ScanStage.VERIFYING,
-    ScanStage.PREPARING
-)
 
 @Composable
 fun ScanScreen(onOpenCase: (String) -> Unit, onHome: () -> Unit) {
@@ -73,116 +39,101 @@ fun ScanScreen(onOpenCase: (String) -> Unit, onHome: () -> Unit) {
     val appVm: DittoViewModel = viewModel(factory = DittoViewModel.Factory)
     val state by scanVm.state.collectAsStateWithLifecycle()
     val library by appVm.content.collectAsStateWithLifecycle()
-
-    val context = androidx.compose.ui.platform.LocalContext.current
-    var uploadTitle by androidx.compose.runtime.remember { androidx.compose.runtime.mutableStateOf("My original") }
-    var uploadSource by androidx.compose.runtime.remember { androidx.compose.runtime.mutableStateOf("Local upload") }
-    val picker = rememberLauncherForActivityResult(
-        ActivityResultContracts.PickVisualMedia()
-    ) { uri: Uri? ->
+    val context = LocalContext.current
+    val listState = rememberLazyListState()
+    var uploadTitle by remember { mutableStateOf("My original") }
+    var importedId by remember { mutableStateOf<String?>(null) }
+    LaunchedEffect(importedId, library) {
+        val id = importedId ?: return@LaunchedEffect
+        library.firstOrNull { it.id == id }?.let {
+            scanVm.selectContent(it)
+            importedId = null
+        }
+    }
+    LaunchedEffect(state.selectedContent?.id) {
+        if (state.selectedContent != null) listState.scrollToItem(0)
+    }
+    val picker = rememberLauncherForActivityResult(ActivityResultContracts.PickVisualMedia()) { uri: Uri? ->
         if (uri != null) {
             runCatching { context.contentResolver.takePersistableUriPermission(uri, android.content.Intent.FLAG_GRANT_READ_URI_PERMISSION) }
             val isVideo = context.contentResolver.getType(uri)?.startsWith("video/") == true
-            scanVm.ingest(uploadTitle, uri.toString(), isVideo, uploadSource)
+            scanVm.ingest(uploadTitle, uri.toString(), isVideo, "Device upload")
         }
     }
-
     LazyColumn(
-        modifier = Modifier
-            .fillMaxSize()
-            .padding(horizontal = 20.dp),
+        state = listState,
+        modifier = Modifier.fillMaxSize().padding(horizontal = 20.dp),
         contentPadding = PaddingValues(top = 24.dp, bottom = 28.dp),
         verticalArrangement = Arrangement.spacedBy(16.dp)
     ) {
         item {
             Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
                 Eyebrow("Find copies", modifier = Modifier.weight(1f))
-                androidx.compose.material3.TextButton(onClick = onHome) { Text("Home") }
+                TextButton(onClick = onHome) { Text("Home") }
             }
             Spacer(Modifier.height(6.dp))
-            Text(
-                "Your originals",
-                style = MaterialTheme.typography.displaySmall,
-                color = DittoColors.TextPrimary
-            )
+            Text("Your originals", style = MaterialTheme.typography.displaySmall, color = DittoColors.TextPrimary)
             Spacer(Modifier.height(6.dp))
             Text(
-                "Select an original to compare suspected copies or search for matching images on the web.",
+                if (state.selectedContent == null) "Choose an original, then tap Find copies to search for matching posts."
+                else "Your original is selected. Start a search below or review your saved results.",
                 style = MaterialTheme.typography.bodyMedium,
                 color = DittoColors.TextSecondary
             )
         }
-
-        item {
-            DittoCard(background = DittoColors.BlueTint.copy(alpha = .88f)) {
-                Eyebrow("What happens next")
-                Spacer(Modifier.height(10.dp))
-                WorkflowStep("1", "Choose your original", "Import it from Instagram or select a file you own.")
-                WorkflowStep("2", "Search for copies", "Ditto checks exact and visually similar matches across publicly indexed pages.")
-                WorkflowStep("3", "Review the evidence", "Open possible sources, confirm the account and post date, then decide what to do.")
-            }
-        }
-
-        if(com.ditto.app.core.BackendConnection(context).enabled()) {
-            item { InstagramConnectionCard() }
-            item { InstagramImportCard(onImported = { scanVm.clear() }) }
-        }
-
-        item {
-            androidx.compose.material3.OutlinedTextField(value=uploadTitle,onValueChange={uploadTitle=it.take(120)},label={Text("Title for your upload")},singleLine=true,modifier=Modifier.fillMaxWidth())
-        }
-        item {
-            androidx.compose.material3.OutlinedTextField(value=uploadSource,onValueChange={uploadSource=it.take(64)},label={Text("Source label")},singleLine=true,modifier=Modifier.fillMaxWidth())
-        }
-        // --- upload / selection ---
-        if (state.selectedContent == null) {
-            item {
-                UploadDropZone(
-                    isBusy = state.isIngesting,
-                    onChoose = {
-                        picker.launch(
-                            PickVisualMediaRequest(
-                                ActivityResultContracts.PickVisualMedia.ImageAndVideo
-                            )
-                        )
-                    }
-                )
-            }
-
-            if (library.isNotEmpty()) {
-                item {
-                    SectionHeading("Or pick from your library")
-                }
-                items(library, key = { it.id }) { item ->
-                    ContentRow(item = item, onClick = { scanVm.selectContent(item) })
-                }
-            }
+        val selected = state.selectedContent
+        if (selected != null) {
+            item { SelectedContentCard(selected, onChange = { scanVm.clear() }) }
+            item { ContentDiscoveryCard(selected.id, onOpenCase) }
         } else {
             item {
-                SelectedContentCard(
-                    content = state.selectedContent!!,
-                    onChange = { scanVm.clear() }
+                DittoCard(background = DittoColors.BlueTint.copy(alpha = .88f)) {
+                    Eyebrow("Three steps")
+                    Spacer(Modifier.height(8.dp))
+                    WorkflowStep("1", "Choose your original", "Pick a saved original, import your Reel or upload a file you own.")
+                    WorkflowStep("2", "Tap Find copies", "Confirm sharing selected images, then follow your search as it runs.")
+                    WorkflowStep("3", "Review matching posts", "Open the source to check the account, date and permission.")
+                }
+            }
+            if (library.isNotEmpty()) {
+                item { SectionHeading("Choose a saved original") }
+                items(library.sortedByDescending { it.publishedAt }, key = { it.id }) { item ->
+                    ContentRow(item = item, onClick = { if (!state.isIngesting) scanVm.selectContent(item) })
+                }
+            }
+            if (BackendConnection(context).enabled()) {
+                item { InstagramConnectionCard() }
+                item { InstagramImportCard(onImported = { importedId = it }) }
+            }
+            item {
+                SectionHeading("Upload an original")
+                Spacer(Modifier.height(8.dp))
+                OutlinedTextField(
+                    value = uploadTitle,
+                    onValueChange = { uploadTitle = it.take(120) },
+                    label = { Text("Original title") },
+                    singleLine = true,
+                    enabled = !state.isIngesting,
+                    modifier = Modifier.fillMaxWidth()
                 )
+                Spacer(Modifier.height(10.dp))
+                UploadDropZone(isBusy = state.isIngesting, onChoose = {
+                    picker.launch(PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageAndVideo))
+                })
             }
         }
-
-        state.selectedContent?.let { selected ->
-            item { ContentDiscoveryCard(selected.id, onOpenCase) }
-        }
         state.error?.let { message ->
-            item { DittoCard { Text(message,style=MaterialTheme.typography.bodySmall) } }
+            item { DittoCard { Text(message, style = MaterialTheme.typography.bodySmall) } }
         }
-
     }
 }
 
 @Composable
 private fun WorkflowStep(number: String, title: String, detail: String) {
     Row(Modifier.fillMaxWidth().padding(vertical = 6.dp), verticalAlignment = Alignment.Top) {
-        Box(
-            Modifier.size(28.dp).clip(CircleShape).background(DittoColors.PrimaryBlue),
-            contentAlignment = Alignment.Center
-        ) { Text(number, style = MaterialTheme.typography.labelMedium, color = DittoColors.TextOnDark) }
+        Box(Modifier.size(28.dp).clip(CircleShape).background(DittoColors.PrimaryBlue), contentAlignment = Alignment.Center) {
+            Text(number, style = MaterialTheme.typography.labelMedium, color = DittoColors.TextOnDark)
+        }
         Spacer(Modifier.width(10.dp))
         Column(Modifier.weight(1f)) {
             Text(title, style = MaterialTheme.typography.titleSmall, color = DittoColors.TextPrimary)
@@ -192,59 +143,19 @@ private fun WorkflowStep(number: String, title: String, detail: String) {
 }
 
 @Composable
-private fun ServerScanHistory(id: String, scanning: Boolean) {
-    val context=androidx.compose.ui.platform.LocalContext.current
-    val lines by androidx.compose.runtime.produceState<List<String>?>(null,id,scanning) {
-        value=kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
-            try {
-                val session=com.ditto.app.core.BackendConnection(context).session() ?: error("Sign in again.")
-                val rows=org.json.JSONArray(com.ditto.app.core.BackendApi(session.endpoint,session.token) { com.ditto.app.core.BackendConnection(context).accessToken(session.userId) }.request("api/content/$id/scans"))
-                if(rows.length()==0) listOf("No server scan has run for this original yet.")
-                else (0 until minOf(5,rows.length())).map { i-> val j=rows.getJSONObject(i);"${j.getString("stage")} • ${j.getInt("candidates")} candidates • ${j.getString("createdAt")}" }
-            } catch(e:kotlinx.coroutines.CancellationException) { throw e } catch(e:Exception) { listOf("Processing history unavailable. Check your connection and refresh.") }
-        }
-    }
-    (lines ?: listOf("Loading server scan history…")).forEach { Text(it,style=MaterialTheme.typography.bodySmall) }
-}
-
-@Composable
 private fun UploadDropZone(isBusy: Boolean, onChoose: () -> Unit) {
-    val shape = RoundedCornerShape(10.dp)
+    val shape = RoundedCornerShape(16.dp)
     Column(
-        modifier = Modifier
-            .fillMaxWidth()
-            .clip(shape)
-            .background(DittoColors.BackgroundAlt)
-            .border(1.dp, DittoColors.Border, shape)
-            .clickable(enabled = !isBusy, onClick = onChoose)
-            .padding(vertical = 34.dp, horizontal = 20.dp),
+        modifier = Modifier.fillMaxWidth().clip(shape).background(DittoColors.BackgroundAlt)
+            .border(1.dp, DittoColors.Border, shape).clickable(enabled = !isBusy, onClick = onChoose)
+            .padding(vertical = 24.dp, horizontal = 20.dp),
         horizontalAlignment = Alignment.CenterHorizontally
     ) {
-        Box(
-            Modifier
-                .size(46.dp)
-                .clip(RoundedCornerShape(10.dp))
-                .background(DittoColors.LightBlue),
-            contentAlignment = Alignment.Center
-        ) {
-            Text("↑", style = MaterialTheme.typography.headlineMedium, color = DittoColors.PrimaryBlue)
-        }
-        Spacer(Modifier.height(14.dp))
-        Text(
-            if (isBusy) "Reading your file…" else "Drop content here",
-            style = MaterialTheme.typography.titleMedium,
-            color = DittoColors.TextPrimary
-        )
-        Spacer(Modifier.height(4.dp))
-        Text(
-            if (isBusy) "Preparing your original for matching"
-            else "Choose an image or video from your device",
-            style = MaterialTheme.typography.bodySmall,
-            color = DittoColors.TextSecondary,
-            textAlign = TextAlign.Center
-        )
+        Text(if (isBusy) "Saving your original…" else "Choose an image or video", style = MaterialTheme.typography.titleMedium, color = DittoColors.TextPrimary)
+        Spacer(Modifier.height(6.dp))
+        Text("After saving, tap Find copies to start the search.", style = MaterialTheme.typography.bodySmall, color = DittoColors.TextSecondary, textAlign = TextAlign.Center)
         if (!isBusy) {
-            Spacer(Modifier.height(16.dp))
+            Spacer(Modifier.height(14.dp))
             SecondaryButton(text = "Choose from device", onClick = onChoose)
         }
     }
@@ -254,170 +165,29 @@ private fun UploadDropZone(isBusy: Boolean, onChoose: () -> Unit) {
 private fun ContentRow(item: ContentItem, onClick: () -> Unit) {
     DittoCard(onClick = onClick, contentPadding = 12) {
         Row(verticalAlignment = Alignment.CenterVertically) {
-            EvidenceVisual(
-                seed = item.paletteSeed,
-                localUri = item.localUri,
-                modifier = Modifier.size(48.dp),
-                cornerRadius = 6
-            )
+            EvidenceVisual(seed = item.paletteSeed, localUri = item.localUri, modifier = Modifier.size(48.dp), cornerRadius = 6)
             Spacer(Modifier.width(12.dp))
             Column(Modifier.weight(1f)) {
-                Text(
-                    item.title,
-                    style = MaterialTheme.typography.titleSmall,
-                    color = DittoColors.TextPrimary,
-                    maxLines = 1
-                )
-                Text(
-                    "${item.kind.wire.replaceFirstChar { it.uppercase() }} · " +
-                        "published ${relativeTime(item.publishedAt)}",
-                    style = MaterialTheme.typography.bodySmall,
-                    color = DittoColors.TextSecondary
-                )
+                Text(item.title, style = MaterialTheme.typography.titleSmall, color = DittoColors.TextPrimary, maxLines = 1)
+                Text("${item.kind.wire.replaceFirstChar { it.uppercase() }} · Added ${relativeTime(item.publishedAt)}", style = MaterialTheme.typography.bodySmall, color = DittoColors.TextSecondary)
             }
-            Text("→", style = MaterialTheme.typography.titleMedium, color = DittoColors.SecondaryBlue)
+            Text("Select →", style = MaterialTheme.typography.labelMedium, color = DittoColors.SecondaryBlue)
         }
     }
 }
 
 @Composable
-private fun SelectedContentCard(
-    content: ContentItem,
-    onChange: () -> Unit
-) {
+private fun SelectedContentCard(content: ContentItem, onChange: () -> Unit) {
     DittoCard {
         Row(verticalAlignment = Alignment.Top) {
-            EvidenceVisual(
-                seed = content.paletteSeed,
-                localUri = content.localUri,
-                modifier = Modifier.size(84.dp),
-                label = "Original"
-            )
+            EvidenceVisual(seed = content.paletteSeed, localUri = content.localUri, modifier = Modifier.size(72.dp), label = "Original")
             Spacer(Modifier.width(14.dp))
             Column(Modifier.weight(1f)) {
-                Eyebrow("Selected")
+                Eyebrow("Selected original")
                 Spacer(Modifier.height(4.dp))
-                Text(
-                    content.title,
-                    style = MaterialTheme.typography.titleMedium,
-                    color = DittoColors.TextPrimary
-                )
-                Spacer(Modifier.height(6.dp))
-                Text("Ready to search and compare", style = MaterialTheme.typography.bodySmall, color = DittoColors.TextSecondary)
+                Text(content.title, style = MaterialTheme.typography.titleMedium, color = DittoColors.TextPrimary)
+                TextButton(onClick = onChange) { Text("Choose another original") }
             }
-        }
-        Spacer(Modifier.height(12.dp))
-        HairlineDivider()
-        Spacer(Modifier.height(10.dp))
-        Text(
-            "Change selection",
-            style = MaterialTheme.typography.labelMedium,
-            color = DittoColors.SecondaryBlue,
-            modifier = Modifier.clickable(onClick = onChange)
-        )
-    }
-}
-
-/**
- * Meaningful staged progress — each stage reflects real pipeline work rather than a
- * timed placeholder bar (report §14).
- */
-@Composable
-private fun ScanProgressCard(
-    currentStage: ScanStage,
-    message: String,
-    isScanning: Boolean
-) {
-    val transition = rememberInfiniteTransition(label = "pulse")
-    val pulse by transition.animateFloat(
-        initialValue = 0.35f,
-        targetValue = 1f,
-        animationSpec = infiniteRepeatable(tween(760), RepeatMode.Reverse),
-        label = "pulseAlpha"
-    )
-    val currentIndex = SCAN_STAGES.indexOf(currentStage)
-        .let { if (currentStage == ScanStage.DONE) SCAN_STAGES.size else it }
-
-    DittoCard {
-        Eyebrow(if (isScanning) "Scanning" else "Scan complete")
-        Spacer(Modifier.height(12.dp))
-        SCAN_STAGES.forEachIndexed { index, stage ->
-            val done = index < currentIndex
-            val active = index == currentIndex && isScanning
-            Row(
-                Modifier
-                    .fillMaxWidth()
-                    .padding(vertical = 5.dp),
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                Box(
-                    Modifier
-                        .size(if (active) 10.dp else 8.dp)
-                        .clip(CircleShape)
-                        .alpha(if (active) pulse else 1f)
-                        .background(
-                            when {
-                                done -> DittoColors.Success
-                                active -> DittoColors.PrimaryBlue
-                                else -> DittoColors.SurfaceSunken
-                            }
-                        )
-                )
-                Spacer(Modifier.width(12.dp))
-                Text(
-                    text = stage.label,
-                    style = if (active) MaterialTheme.typography.titleSmall
-                    else MaterialTheme.typography.bodyMedium,
-                    color = when {
-                        done -> DittoColors.TextPrimary
-                        active -> DittoColors.PrimaryBlue
-                        else -> DittoColors.TextTertiary
-                    },
-                    modifier = Modifier.weight(1f)
-                )
-                if (done) {
-                    Text("✓", style = MaterialTheme.typography.labelMedium, color = DittoColors.Success)
-                }
-            }
-        }
-        AnimatedVisibility(visible = message.isNotBlank(), enter = fadeIn() + expandVertically()) {
-            Column {
-                Spacer(Modifier.height(10.dp))
-                HairlineDivider()
-                Spacer(Modifier.height(10.dp))
-                Text(
-                    message,
-                    style = MaterialTheme.typography.bodySmall,
-                    color = DittoColors.TextSecondary
-                )
-            }
-        }
-    }
-}
-
-@Composable
-private fun ScanErrorCard(message: String, onRetry: () -> Unit) {
-    DittoCard(background = DittoColors.DangerBg, borderColor = DittoColors.Danger.copy(alpha = 0.3f)) {
-        Text(
-            "Ditto couldn't complete the scan.",
-            style = MaterialTheme.typography.titleMedium,
-            color = DittoColors.Danger
-        )
-        Spacer(Modifier.height(4.dp))
-        Text(
-            message,
-            style = MaterialTheme.typography.bodyMedium,
-            color = DittoColors.TextSecondary
-        )
-        Spacer(Modifier.height(6.dp))
-        Text(
-            "Your original remains in the selected account's storage.",
-            style = MaterialTheme.typography.bodySmall,
-            color = DittoColors.TextSecondary
-        )
-        Spacer(Modifier.height(14.dp))
-        Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-            PrimaryButton(text = "Try again", onClick = onRetry, modifier = Modifier.weight(1f))
         }
     }
 }

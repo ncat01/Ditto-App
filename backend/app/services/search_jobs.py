@@ -17,10 +17,16 @@ from sqlalchemy.exc import IntegrityError
 from app.config import get_settings
 from app.models.account_security import RequestBudget, WebSearchRecord
 from app.models.jobs import ProcessingJob
-from app.models.tables import Content
+from app.models.tables import ActivityEvent, Content
 from app.providers.web_search import query_images, search, SearchUnavailable
 
 RECOVERY_GRACE = timedelta(minutes=2)
+
+
+def log_search(db, job, title, detail):
+    db.add(ActivityEvent(user_id=job.user_id,
+        timestamp=datetime.now(timezone.utc).replace(tzinfo=None),
+        agent='discovery', title=title, detail=detail))
 
 
 def original_path(user_id, item):
@@ -100,6 +106,8 @@ def enqueue(db, content_id, body):
             'kind': 'web_search', 'originalId': content_id,
             'searchUnits': units, 'frameCount': len(images), 'consent': True})
         db.add(job)
+        log_search(db, job, 'Search requested',
+                   'Your original is queued. Results will appear when the search finishes.')
         db.commit()
     except HTTPException:
         db.rollback()
@@ -155,6 +163,8 @@ def recover_interrupted(db):
         job.state = 'unknown'
         job.error = 'Search was interrupted. Its provider usage is unconfirmed. '
         job.error += 'Start a new search explicitly if needed.'
+        log_search(db, job, 'Search interrupted',
+                   'The search did not finish. Open your original to review its saved status.')
     db.commit()
 
 
@@ -173,11 +183,14 @@ def deliver(db, job):
     except (ValueError, OSError, KeyError):
         job.state = 'error'
         job.error = 'Original could not be prepared for search. Upload a valid image or video.'
+        log_search(db, job, 'Search could not start', job.error)
         db.commit()
         return
     job.state = 'running'
     # Reassign JSON, because an in-place mutation is not tracked by this column.
     job.payload = {**job.payload, 'startedAt': datetime.now(timezone.utc).isoformat()}
+    log_search(db, job, 'Search started',
+               'Checking publicly indexed pages for possible copies of your original.')
     db.commit()
     # Hold a row lock through the provider request. A second live worker cannot
     # mistake this committed running receipt for an interrupted search.
@@ -194,12 +207,17 @@ def deliver(db, job):
         job.result = search_result(record_id, results, job.payload['searchUnits'])
         job.state = 'complete'
         job.error = None
+        detail = (f'Found {len(results)} possible matches. Open the sources to review them.'
+                  if results else 'No indexed matches found. This does not prove that no repost exists.')
+        log_search(db, job, 'Search complete', detail)
     except SearchUnavailable as exc:
         job.state = 'error'
         job.error = str(exc)[:256]
+        log_search(db, job, 'Search could not finish', job.error)
     except Exception:
         # This receipt has already been committed as running. Never return it to
         # queued when an unexpected provider failure occurs.
         job.state = 'error'
         job.error = 'Search could not be completed. Start a new search explicitly if needed.'
+        log_search(db, job, 'Search could not finish', job.error)
     db.commit()

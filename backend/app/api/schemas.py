@@ -192,3 +192,4 @@ class HealthOut(BaseModel):
     demoMode: bool
     database: str
     providers: dict[str, str]
+    capabilities: dict[str, bool] = Field(default_factory=dict)
